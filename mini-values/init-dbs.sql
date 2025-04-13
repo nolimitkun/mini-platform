@@ -1,0 +1,10 @@
+CREATE DATABASE litellm;
+CREATE USER litellm WITH ENCRYPTED PASSWORD 'NoTaGrEaTpAsSwOrD';
+GRANT ALL PRIVILEGES ON DATABASE litellm TO litellm;
+\c litellm
+GRANT ALL ON SCHEMA public TO litellm;
+
+
+
+
+ALTER USER litellm WITH PASSWORD 'NoTaGrEaTpAsSwOrD';

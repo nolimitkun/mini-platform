@@ -1,0 +1,5 @@
+#global:
+#  redis:
+#    password: ""
+metrics:
+  enabled: false
