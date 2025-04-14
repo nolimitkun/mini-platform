@@ -1,6 +1,2 @@
-#global:
-#  postgresql:
-#    auth:
-#      postgresPassword: "postgres"
 metrics:
   enabled: true
