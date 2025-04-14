@@ -73,7 +73,7 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
-masterkey: sk-1234
+# masterkey: changeit
 
 # if set, use this secret for the master key; otherwise, autogenerate a new one
 masterkeySecretName: ""
@@ -96,20 +96,8 @@ proxy_config:
         model: openai/fake
         api_key: fake-key
         api_base: https://exampleopenaiendpoint-production.up.railway.app/
-    - model_name: vllm-models
-      litellm_params:
-        model: openai/facebook/opt-125m # the `openai/` prefix tells litellm it's openai compatible
-        api_base: http://0.0.0.0:4000/v1
-        api_key: none
-        rpm: 1440
-      model_info: 
-        version: 2
   general_settings:
     master_key: os.environ/PROXY_MASTER_KEY
-    store_model_in_db: true
-    store_prompts_in_spend_logs: true
-  litellm_settings:
-    cache: True
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
@@ -151,14 +139,14 @@ affinity: {}
 
 db:
   # Use an existing postgres server/cluster
-  useExisting: true
+  useExisting: false
 
   # How to connect to the existing postgres server/cluster
-  endpoint: postgresql.default.svc.cluster.local
+  endpoint: localhost
   database: litellm
   url: postgresql://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@$(DATABASE_HOST)/$(DATABASE_NAME)
   secret:
-    name: litellm-dbcredentials
+    name: postgres
     usernameKey: username
     passwordKey: password
 
@@ -170,7 +158,7 @@ db:
 
   # Use the Postgres Helm chart to create a single node, stand alone postgres
   #  instance.  See the "postgresql" top level key for additional configuration.
-  deployStandalone: false
+  deployStandalone: true
 
 # Settings for Bitnami postgresql chart (if db.deployStandalone is true, ignored
 #  otherwise)
@@ -195,25 +183,27 @@ postgresql:
 # either enable this or pass a secret for REDIS_HOST, REDIS_PORT, REDIS_PASSWORD or REDIS_URL
 # with cache: true to use existing redis instance
 redis:
-  deployStandalone: false
-  enabled: true
+  enabled: false
   architecture: standalone
-  secret:
-    name: redis
-    passwordKey: redis-password
 
 # Prisma migration job settings
 migrationJob:
-  enabled: false # Enable or disable the schema migration Job
+  enabled: true # Enable or disable the schema migration Job
   retries: 3 # Number of retries for the Job in case of failure
   backoffLimit: 4 # Backoff limit for Job restarts
   disableSchemaUpdate: false # Skip schema migrations for specific environments. When True, the job will exit with code 0.
   annotations: {}
   ttlSecondsAfterFinished: 120
 
-# Additional environment variables to be added to the deployment
+# Additional environment variables to be added to the deployment as a map of key-value pairs
 envVars: {
     # USE_DDTRACE: "true"
+}
+
+# Additional environment variables to be added to the deployment as a list of k8s env vars
+extraEnvVars: {
+    # - name: EXTRA_ENV_VAR
+    #   value: EXTRA_ENV_VAR_VALUE
 }
 
 

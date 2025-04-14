@@ -30,22 +30,10 @@ proxy_config:
 db:
   # Use an existing postgres server/cluster
   useExisting: true
-
   # How to connect to the existing postgres server/cluster
   endpoint: postgresql.default.svc.cluster.local
-  database: litellm
-  url: postgresql://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@$(DATABASE_HOST)/$(DATABASE_NAME)
   secret:
     name: litellm-dbcredentials
-    usernameKey: username
-    passwordKey: password
-
-  # Use the Stackgres Helm chart to deploy an instance of a Stackgres cluster.
-  #  The Stackgres Operator must already be installed within the target
-  #  Kubernetes cluster.
-  # TODO: Stackgres deployment currently unsupported
-  useStackgresOperator: false
-
   # Use the Postgres Helm chart to create a single node, stand alone postgres
   #  instance.  See the "postgresql" top level key for additional configuration.
   deployStandalone: false
