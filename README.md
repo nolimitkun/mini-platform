@@ -16,6 +16,17 @@ export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/nam
 export CONTAINER_PORT=$(kubectl get pod --namespace default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
 kubectl --namespace default port-forward $POD_NAME 4000:$CONTAINER_PORT
 
+helm install jupyterhub charts/jupyterhub
+helm install qdrant charts/qdrant
+
+helm install open-webui charts/open-webui -f mini-values/open-webui-values.yaml
+
+export LOCAL_PORT=8010
+export POD_NAME=$(kubectl get pods -n default -l "app.kubernetes.io/component=open-webui" -o jsonpath="{.items[0].metadata.name}")
+export CONTAINER_PORT=$(kubectl get pod -n default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+kubectl -n default port-forward $POD_NAME $LOCAL_PORT:$CONTAINER_PORT
+
+
 ```
 
 
@@ -42,7 +53,6 @@ helm install jupyterhub/jupyterhub --version <helm chart version>
 https://github.com/open-webui/helm-charts
 ```bash
 helm repo add open-webui https://helm.openwebui.com/
-helm upgrade --install open-webui open-webui/pipelines
 helm upgrade --install open-webui open-webui/open-webui
 ```
 
