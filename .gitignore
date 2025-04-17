@@ -6,8 +6,6 @@
 .idea/
 
 # Helm
-/charts/**/charts/
-/charts/**/Chart.lock
 /charts/**/tmp/
 
 # Kubernetes
