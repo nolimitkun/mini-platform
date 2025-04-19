@@ -6,5 +6,4 @@ GRANT ALL ON SCHEMA public TO litellm;
 
 
 
-
 ALTER USER litellm WITH PASSWORD 'NoTaGrEaTpAsSwOrD';

@@ -1,5 +1,18 @@
 # Mini Platform
 
+
+
+| Layer                     | Components                                                                 |
+|---------------------------|----------------------------------------------------------------------------|
+| **Use Case**              | Chat, OCR, Semantic Search, Agent, RAG ,Fine-tuning                        |
+| **Discovery & Gateway**   | Authz/Authn, LB / Proxy / Route,  KV-cache                                 |
+| **Engine & Model**        | Reasoning model, Base model, Embedding model, LLaMA, DeepSeek, Qwen, Mistral, Gemma|
+| **Compute**               | K8S, CPU, GPU, RAM                                                         |
+| **Storage**               | Blob, Disk, DB, Vector DB                                                  |
+| **Platform Operations**   | Scalability, Observability, FinOps                                         |
+
+
+- Base
 ```bash
 helm install postgresql charts/postgresql -f mini-values/postgres-values.yaml
 helm install redis charts/redis -f mini-values/redis-values.yaml
@@ -16,18 +29,34 @@ export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/nam
 export CONTAINER_PORT=$(kubectl get pod --namespace default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
 kubectl --namespace default port-forward $POD_NAME 4000:$CONTAINER_PORT
 
-helm install jupyterhub charts/jupyterhub
+
 helm install qdrant charts/qdrant
 
+```
+- Usecase : Text-2-SQL
+```bash
+export POSTGRES_PASSWORD=$(kubectl get secret --namespace default postgresql -o jsonpath="{.data.postgres-password}" | base64 -d)
+kubectl run postgresql-client --rm --tty -i --restart='Never' --namespace default --image docker.io/bitnami/postgresql:17.4.0-debian-12-r15 --env="PGPASSWORD=$POSTGRES_PASSWORD" \
+    --command -- psql --host postgresql -U postgres -d postgres -p 5432
+
+run mini-store.sql
+
+helm install jupyterhub charts/jupyterhub
+
+kubectl --namespace default port-forward svc/proxy-public 8080:80
+
+upload text-2-sql/postgres-openai-standard-qdrant.ipynb
+```
+- Chat
+```bash
 helm install open-webui charts/open-webui -f mini-values/open-webui-values.yaml
 
 export LOCAL_PORT=8010
 export POD_NAME=$(kubectl get pods -n default -l "app.kubernetes.io/component=open-webui" -o jsonpath="{.items[0].metadata.name}")
 export CONTAINER_PORT=$(kubectl get pod -n default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
 kubectl -n default port-forward $POD_NAME $LOCAL_PORT:$CONTAINER_PORT
-
-
 ```
+
 
 
 ## Data
