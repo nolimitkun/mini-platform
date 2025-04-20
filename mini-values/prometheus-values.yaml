@@ -1,0 +1,16 @@
+extraScrapeConfigs: |
+  - job_name: node-exporter
+    static_configs:
+    - targets: ['prometheus-prometheus-node-exporter:9100']
+  - job_name: qdrant
+    static_configs:
+    - targets: ['qdrant-headless:6333']
+  - job_name: postgresql
+    static_configs:
+    - targets: ['postgresql-metrics:9187']
+  - job_name: redis
+    static_configs:
+    - targets: ['redis-metrics:9121']
+  - job_name: litellm
+    static_configs:
+    - targets: ['litellm:4000']

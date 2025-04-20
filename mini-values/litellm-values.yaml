@@ -26,6 +26,7 @@ proxy_config:
     store_prompts_in_spend_logs: true
   litellm_settings:
     cache: True
+    callbacks: ["prometheus"]
     
 db:
   # Use an existing postgres server/cluster

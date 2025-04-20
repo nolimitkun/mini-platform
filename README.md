@@ -30,7 +30,10 @@ export CONTAINER_PORT=$(kubectl get pod --namespace default $POD_NAME -o jsonpat
 kubectl --namespace default port-forward $POD_NAME 4000:$CONTAINER_PORT
 
 
-helm install qdrant charts/qdrant
+helm install qdrant charts/qdrant -f mini-values/qdrant-values.yaml
+
+
+
 
 ```
 - Usecase : Text-2-SQL

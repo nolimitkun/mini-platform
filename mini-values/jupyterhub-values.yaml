@@ -1,0 +1,13 @@
+hub: 
+  networkPolicy:
+    enabled: true
+proxy:
+  chp:
+    networkPolicy:
+      enabled: true
+  traefik:
+    networkPolicy:
+      enabled: true
+singleuser:
+  networkPolicy:
+    enabled: true
