@@ -10,10 +10,28 @@ Allow the release namespace to be overridden for multi-namespace deployments in 
 {{- end -}}
 
 {{/*
-Set the name of the Pipelines resources
+Expand the name of the chart.
 */}}
 {{- define "pipelines.name" -}}
-{{- default .Release.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
+*/}}
+{{- define "pipelines.fullname" -}}
+{{- if and .Values.fullnameOverride (ne .Values.fullnameOverride "") }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
 {{- end -}}
 
 {{/*
@@ -32,6 +50,7 @@ helm.sh/chart: {{ include "chart.name" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/name: {{ include "pipelines.name" . }}
 {{- end }}
 
 {{/*
@@ -47,6 +66,12 @@ Create selector labels to include on all Pipelines resources
 {{- define "pipelines.selectorLabels" -}}
 {{ include "base.selectorLabels" . }}
 app.kubernetes.io/component: {{ .Chart.Name }}
+{{- end }}
+
+{{- define "pipelines.extraLabels" -}}
+{{- with .Values.extraLabels }}
+{{- toYaml . }}
+{{- end }}
 {{- end }}
 
 {{/*

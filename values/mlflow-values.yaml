@@ -1,0 +1,27 @@
+tracking:
+  service:
+    type: ClusterIP
+  auth:
+    enabled: true
+    existingSecret: mlflow-auth
+    existingSecretUserKey: admin-user
+    existingSecretPasswordKey: admin-password
+    existingSecretFlaskServerSecretKey: flask-server-secret-key
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: mlflow-postgresql
+
+minio:
+  enabled: true
+  auth:
+    existingSecret: mlflow-minio
+  defaultBuckets: mlflow
+  provisioning:
+    enabled: true
+

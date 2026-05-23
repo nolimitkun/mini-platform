@@ -4,12 +4,21 @@ metadata:
   name: {{ include "qdrant.fullname" . }}
   labels:
     {{- include "qdrant.labels" . | nindent 4 }}
-{{- with .Values.additionalLabels }}
-{{- toYaml . | nindent 4 }}
+    {{- include "qdrant.additionalLabels" . | nindent 4 }}
+{{- with .Values.additionalAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
 {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   podManagementPolicy: {{ .Values.podManagementPolicy }}
+  {{- if .Values.minReadySeconds }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  {{- end }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
   selector:
     matchLabels:
       {{- include "qdrant.selectorLabels" . | nindent 6 }}
@@ -26,6 +35,7 @@ spec:
       {{- end }}
       labels:
         {{- include "qdrant.selectorLabels" . | nindent 8 }}
+        {{- include "qdrant.additionalLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
           {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -40,15 +50,18 @@ spec:
       {{- if .Values.shareProcessNamespace }}
       shareProcessNamespace: {{ .Values.shareProcessNamespace }}
       {{- end }}
+      {{- if hasKey .Values "terminationGracePeriodSeconds" }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- end }}
       initContainers:
-      {{- if .Values.updateVolumeFsOwnership }}
+      {{- if and .Values.updateVolumeFsOwnership (not .Values.image.useUnprivilegedImage) }}
       {{- if and .Values.containerSecurityContext .Values.containerSecurityContext.runAsUser }}
       - name: ensure-dir-ownership
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         command:
           - chown
           - -R
-          - {{ .Values.containerSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }}
+          - {{ int64 .Values.containerSecurityContext.runAsUser }}:{{ int64 .Values.podSecurityContext.fsGroup }}
           - /qdrant/storage
           - /qdrant/snapshots
           {{- if and .Values.snapshotRestoration.enabled .Values.snapshotRestoration.pvcName }}
@@ -256,12 +269,18 @@ spec:
         name: {{ .Values.persistence.storageVolumeName | default "qdrant-storage" }}
         labels:
           app: {{ template "qdrant.name" . }}
+          {{- with .Values.persistence.additionalLabels }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         {{- with .Values.persistence.annotations }}
         annotations:
         {{- toYaml . | nindent 10 }}
         {{- end }}
       spec:
         storageClassName: {{ .Values.persistence.storageClassName }}
+        {{- if .Values.persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ .Values.persistence.volumeAttributesClassName }}
+        {{- end }}
         accessModes:
         {{- range .Values.persistence.accessModes }}
           - {{ . | quote }}
@@ -274,12 +293,18 @@ spec:
         name: {{ .Values.snapshotPersistence.snapshotsVolumeName | default "qdrant-snapshots" }}
         labels:
           app: {{ template "qdrant.name" . }}
+          {{- with .Values.snapshotPersistence.additionalLabels }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         {{- with .Values.snapshotPersistence.annotations }}
         annotations:
         {{- toYaml . | nindent 10 }}
         {{- end }}
       spec:
         storageClassName: {{ .Values.snapshotPersistence.storageClassName }}
+        {{- if .Values.snapshotPersistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ .Values.snapshotPersistence.volumeAttributesClassName }}
+        {{- end }}
         accessModes:
         {{- range .Values.snapshotPersistence.accessModes }}
           - {{ . | quote }}

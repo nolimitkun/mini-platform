@@ -5,6 +5,7 @@ SPDX-License-Identifier: APACHE-2.0
 
 {{- if or .Release.IsUpgrade (ne .Values.sentinel.service.type "NodePort")  .Values.sentinel.service.nodePorts.redis -}}
 {{- if and (eq .Values.architecture "replication") .Values.sentinel.enabled }}
+{{- $loadBalancerIPs := coalesce .Values.sentinel.externalAccess.service.loadBalancerIPs .Values.sentinel.externalAccess.service.loadBalancerIP }}
 apiVersion: {{ include "common.capabilities.statefulset.apiVersion" . }}
 kind: StatefulSet
 metadata:
@@ -27,7 +28,7 @@ spec:
   {{- if .Values.replica.updateStrategy }}
   updateStrategy: {{- toYaml .Values.replica.updateStrategy | nindent 4 }}
   {{- end }}
-  {{- if and .Values.replica.minReadySeconds (semverCompare ">= 1.23-0" (include "common.capabilities.kubeVersion" .)) }}
+  {{- if .Values.replica.minReadySeconds }}
   minReadySeconds: {{ .Values.replica.minReadySeconds }}
   {{- end }}
   {{- if .Values.replica.podManagementPolicy }}
@@ -51,7 +52,7 @@ spec:
         checksum/health: {{ pick ( include (print $.Template.BasePath "/health-configmap.yaml") . | fromYaml ) "data" | toYaml | sha256sum }}
         checksum/scripts: {{ pick ( include (print $.Template.BasePath "/scripts-configmap.yaml") . | fromYaml ) "data" | toYaml | sha256sum }}
       {{- end }}
-      {{- if .Values.secretChecksumAnnotations }}
+      {{- if and .Values.secretChecksumAnnotations (include "redis.valuesBasedSecret" .) }}
         checksum/secret: {{ pick ( include (print $.Template.BasePath "/secret.yaml") . | fromYaml ) "data" | toYaml | sha256sum }}
       {{- end }}
       {{- if .Values.replica.podAnnotations }}
@@ -120,7 +121,7 @@ spec:
               exec:
                 command:
                   - /bin/bash
-                  - -c
+                  - -ec
                   - /opt/bitnami/scripts/start-scripts/prestop-redis.sh
           {{- end }}
           {{- end }}
@@ -132,7 +133,7 @@ spec:
           {{- else if .Values.replica.command }}
           command: {{- include "common.tplvalues.render" (dict "value" .Values.replica.command "context" $) | nindent 12 }}
           {{- else }}
-          command: ['/bin/bash', '-c']
+          command: ['/bin/bash', '-ec']
           {{- end }}
           {{- if .Values.diagnosticMode.enabled }}
           args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
@@ -143,7 +144,7 @@ spec:
             - |
               pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
               pod_index="${pod_index[-1]}"
-              ips=($(echo "{{ .Values.sentinel.externalAccess.service.loadBalancerIP }}" | cut -d [ -f2 | cut -d ] -f 1))
+              ips=($(echo "{{ $loadBalancerIPs }}" | cut -d [ -f2 | cut -d ] -f 1))
               export REDIS_CLUSTER_ANNOUNCE_IP="${ips[$pod_index]}"
               export REDIS_NODES="${ips[@]}"
               /opt/bitnami/scripts/start-scripts/start-node.sh
@@ -162,6 +163,10 @@ spec:
               value: {{ .Values.replica.containerPorts.redis | quote }}
             - name: ALLOW_EMPTY_PASSWORD
               value: {{ ternary "no" "yes" .Values.auth.enabled | quote }}
+            {{- if include "common.fips.enabled" . }}
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.replica.fips "global" .Values.global) | quote }}
+            {{- end }}
             {{- if .Values.auth.enabled }}
             {{- if .Values.auth.usePasswordFiles }}
             - name: REDIS_PASSWORD_FILE
@@ -259,9 +264,9 @@ spec:
           startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.replica.startupProbe "enabled") "context" $) | nindent 12 }}
             exec:
               command:
-                - sh
-                - -c
-                - /health/ping_liveness_local.sh {{ .Values.replica.livenessProbe.timeoutSeconds }}
+                - /bin/bash
+                - -ec
+                - "/health/ping_liveness_local.sh {{ .Values.replica.livenessProbe.timeoutSeconds }}"
           {{- end }}
           {{- if .Values.replica.customLivenessProbe }}
           livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.replica.customLivenessProbe "context" $) | nindent 12 }}
@@ -274,9 +279,9 @@ spec:
             failureThreshold: {{ .Values.replica.livenessProbe.failureThreshold }}
             exec:
               command:
-                - sh
-                - -c
-                - /health/ping_liveness_local.sh {{ .Values.replica.livenessProbe.timeoutSeconds }}
+                - /bin/bash
+                - -ec
+                - "/health/ping_liveness_local.sh {{ .Values.replica.livenessProbe.timeoutSeconds }}"
           {{- end }}
           {{- if .Values.replica.customReadinessProbe }}
           readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.replica.customReadinessProbe "context" $) | nindent 12 }}
@@ -289,9 +294,9 @@ spec:
             failureThreshold: {{ .Values.replica.readinessProbe.failureThreshold }}
             exec:
               command:
-                - sh
-                - -c
-                - /health/ping_readiness_local.sh {{ .Values.replica.readinessProbe.timeoutSeconds }}
+                - /bin/bash
+                - -ec
+                - "/health/ping_readiness_local.sh {{ .Values.replica.readinessProbe.timeoutSeconds }}"
           {{- end }}
           {{- end }}
           {{- if .Values.replica.resources }}
@@ -319,12 +324,14 @@ spec:
               {{- end }}
             - name: config
               mountPath: /opt/bitnami/redis/mounted-etc
+            {{- if and .Values.replica.containerSecurityContext.enabled .Values.replica.containerSecurityContext.readOnlyRootFilesystem }}
             - name: empty-dir
               mountPath: /opt/bitnami/redis/etc
               subPath: app-conf-dir
             - name: empty-dir
               mountPath: /tmp
               subPath: tmp-dir
+            {{- end }}
             {{- if .Values.tls.enabled }}
             - name: redis-certificates
               mountPath: /opt/bitnami/redis/certs
@@ -345,7 +352,7 @@ spec:
               exec:
                 command:
                   - /bin/bash
-                  - -c
+                  - -ec
                   - /opt/bitnami/scripts/start-scripts/prestop-sentinel.sh
           {{- end }}
           {{- end }}
@@ -357,7 +364,7 @@ spec:
           {{- else if .Values.sentinel.command }}
           command: {{- include "common.tplvalues.render" (dict "value" .Values.sentinel.command "context" $) | nindent 12 }}
           {{- else }}
-          command: ['/bin/bash', '-c']
+          command: ['/bin/bash', '-ec']
           {{- end }}
           {{- if .Values.diagnosticMode.enabled }}
           args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
@@ -368,7 +375,7 @@ spec:
             - |
               pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
               pod_index="${pod_index[-1]}"
-              ips=($(echo "{{ .Values.sentinel.externalAccess.service.loadBalancerIP }}" | cut -d [ -f2 | cut -d ] -f 1))
+              ips=($(echo "{{ $loadBalancerIPs }}" | cut -d [ -f2 | cut -d ] -f 1))
               export REDIS_CLUSTER_ANNOUNCE_IP="${ips[$pod_index]}"
               export REDIS_NODES="${ips[@]}"
               /opt/bitnami/scripts/start-scripts/start-sentinel.sh
@@ -397,6 +404,10 @@ spec:
             {{- else }}
             - name: ALLOW_EMPTY_PASSWORD
               value: "yes"
+            {{- end }}
+            {{- if include "common.fips.enabled" . }}
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.sentinel.fips "global" .Values.global) | quote }}
             {{- end }}
             - name: REDIS_SENTINEL_TLS_ENABLED
               value: {{ ternary "yes" "no" .Values.tls.enabled | quote }}
@@ -451,9 +462,9 @@ spec:
           startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.sentinel.startupProbe "enabled") "context" $) | nindent 12 }}
             exec:
               command:
-                - sh
-                - -c
-                - /health/ping_sentinel.sh {{ .Values.sentinel.livenessProbe.timeoutSeconds }}
+                - /bin/bash
+                - -ec
+                - "/health/ping_sentinel.sh {{ .Values.sentinel.livenessProbe.timeoutSeconds }}"
           {{- end }}
           {{- if .Values.sentinel.customLivenessProbe }}
           livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.sentinel.customLivenessProbe "context" $) | nindent 12 }}
@@ -466,9 +477,9 @@ spec:
             failureThreshold: {{ .Values.sentinel.livenessProbe.failureThreshold }}
             exec:
               command:
-                - sh
-                - -c
-                - /health/ping_sentinel.sh {{ .Values.sentinel.livenessProbe.timeoutSeconds }}
+                - /bin/bash
+                - -ec
+                - "/health/ping_sentinel.sh {{ .Values.sentinel.livenessProbe.timeoutSeconds }}"
           {{- end }}
           {{- end }}
           {{- if not .Values.diagnosticMode.enabled }}
@@ -483,9 +494,9 @@ spec:
             failureThreshold: {{ .Values.sentinel.readinessProbe.failureThreshold }}
             exec:
               command:
-                - sh
-                - -c
-                - /health/ping_sentinel.sh {{ .Values.sentinel.readinessProbe.timeoutSeconds }}
+                - /bin/bash
+                - -ec
+                - "/health/ping_sentinel.sh {{ .Values.sentinel.readinessProbe.timeoutSeconds }}"
           {{- end }}
           {{- end }}
           {{- if .Values.sentinel.resources }}
@@ -494,9 +505,11 @@ spec:
           resources: {{- include "common.resources.preset" (dict "type" .Values.sentinel.resourcesPreset) | nindent 12 }}
           {{- end }}
           volumeMounts:
+            {{- if and .Values.sentinel.containerSecurityContext.enabled .Values.sentinel.containerSecurityContext.readOnlyRootFilesystem }}
             - name: empty-dir
               mountPath: /tmp
               subPath: tmp-dir
+            {{- end }}
             - name: start-scripts
               mountPath: /opt/bitnami/scripts/start-scripts
             - name: health
@@ -540,7 +553,7 @@ spec:
           {{- else }}
           command:
             - /bin/bash
-            - -c
+            - -ec
             - |
               {{- if and .Values.auth.enabled .Values.auth.usePasswordFiles }}
               export REDIS_PASSWORD="$(< $REDIS_PASSWORD_FILE)"
@@ -568,6 +581,12 @@ spec:
                   name: {{ template "redis.secretName" . }}
                   key: {{ template "redis.secretPasswordKey" . }}
             {{- end }}
+            {{- end }}
+            {{- if include "common.fips.enabled" . }}
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.metrics.fips "global" .Values.global) | quote }}
+            - name: GODEBUG
+              value: {{ include "common.fips.config" (dict "tech" "golang" "fips" .Values.metrics.fips "global" .Values.global) | quote }}
             {{- end }}
             {{- if .Values.tls.enabled }}
             - name: REDIS_ADDR
@@ -619,9 +638,11 @@ spec:
           resources: {{- include "common.resources.preset" (dict "type" .Values.metrics.resourcesPreset) | nindent 12 }}
           {{- end }}
           volumeMounts:
+            {{- if and .Values.metrics.containerSecurityContext.enabled .Values.metrics.containerSecurityContext.readOnlyRootFilesystem }}
             - name: empty-dir
               mountPath: /tmp
               subPath: tmp-dir
+            {{- end }}
             {{- if and .Values.auth.enabled .Values.auth.usePasswordFiles }}
             - name: redis-password
               mountPath: /secrets/
@@ -657,6 +678,13 @@ spec:
           {{- if .Values.kubectl.resources }}
           resources: {{- toYaml .Values.kubectl.resources | nindent 12 }}
           {{- end }}
+          {{- if include "common.fips.enabled" . }}
+          env:
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.kubectl.fips "global" .Values.global) | quote }}
+            - name: GODEBUG
+              value: {{ include "common.fips.config" (dict "tech" "golang" "fips" .Values.kubectl.fips "global" .Values.global) | quote }}
+          {{- end }}
         {{- end }}
         {{- if .Values.replica.sidecars }}
         {{- include "common.tplvalues.render" (dict "value" .Values.replica.sidecars "context" $) | nindent 8 }}
@@ -685,9 +713,13 @@ spec:
           {{- else }}
           securityContext: {{- .Values.volumePermissions.containerSecurityContext | toYaml | nindent 12 }}
           {{- end }}
-          {{- if .Values.volumePermissions.extraEnvVars }}
           env:
+          {{- if .Values.volumePermissions.extraEnvVars }}
           {{- include "common.tplvalues.render" (dict "value" .Values.volumePermissions.extraEnvVars "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if include "common.fips.enabled" . }}
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.volumePermissions.fips "global" .Values.global) | quote }}
           {{- end }}
           {{- if .Values.volumePermissions.resources }}
           resources: {{- toYaml .Values.volumePermissions.resources | nindent 12 }}
@@ -695,9 +727,6 @@ spec:
           resources: {{- include "common.resources.preset" (dict "type" .Values.volumePermissions.resourcesPreset) | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: empty-dir
-              mountPath: /tmp
-              subPath: tmp-dir
             - name: redis-data
               mountPath: {{ .Values.replica.persistence.path }}
               {{- if .Values.replica.persistence.subPath }}
@@ -723,9 +752,6 @@ spec:
           {{- end }}
           {{- if .Values.sysctl.mountHostSys }}
           volumeMounts:
-            - name: empty-dir
-              mountPath: /tmp
-              subPath: tmp-dir
             - name: host-sys
               mountPath: /host-sys
           {{- end }}
@@ -782,6 +808,7 @@ spec:
           emptyDir: {}
           {{- end }}
         {{- end }}
+        {{- if or (and .Values.sentinel.containerSecurityContext.enabled .Values.sentinel.containerSecurityContext.readOnlyRootFilesystem) (and .Values.metrics.enabled .Values.metrics.containerSecurityContext.enabled .Values.metrics.containerSecurityContext.readOnlyRootFilesystem) }}
         - name: empty-dir
           {{- if or .Values.sentinel.persistence.medium .Values.sentinel.persistence.sizeLimit }}
           emptyDir:
@@ -794,6 +821,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- end }}
         {{- if .Values.replica.extraVolumes }}
         {{- include "common.tplvalues.render" ( dict "value" .Values.replica.extraVolumes "context" $ ) | nindent 8 }}
         {{- end }}

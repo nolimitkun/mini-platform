@@ -4,13 +4,19 @@ metadata:
   name: {{ include "qdrant.fullname" . }}-headless
   labels:
     {{- include "qdrant.labels" . | nindent 4 }}
+    {{- include "qdrant.additionalLabels" . | nindent 4 }}
     app.kubernetes.io/component: cluster-discovery
 {{- with .Values.service.additionalLabels }}
 {{- toYaml . | nindent 4 }}
 {{- end }}
-{{- if .Values.service.annotations }}
+{{- if or .Values.service.annotations .Values.additionalAnnotations }}
   annotations:
-{{ toYaml .Values.service.annotations | indent 4 }}
+{{- with .Values.additionalAnnotations }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
 {{- end }}
 spec:
   clusterIP: None

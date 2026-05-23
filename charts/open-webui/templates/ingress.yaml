@@ -2,13 +2,16 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "open-webui.name" . }}
+  name: {{ include "open-webui.fullname" . }}
   namespace: {{ include "open-webui.namespace" . }}
   labels:
     {{- include "open-webui.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+    {{- with .Values.ingress.extraLabels }}
+    {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
+  {{- if .Values.ingress.annotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
+    {{- tpl (toYaml .Values.ingress.annotations | nindent 4) . }}
   {{- end }}
 spec:
   {{- with .Values.ingress.class }}
@@ -17,32 +20,34 @@ spec:
   {{- if .Values.ingress.tls }}
   tls:
     - hosts:
-      - {{ .Values.ingress.host | quote }}
+      - {{ tpl .Values.ingress.host . | quote }}
       {{- range .Values.ingress.additionalHosts }}
-      - {{ . | quote }}
+      - {{ tpl . $ | quote }}
       {{- end }}
-      secretName: {{ default (printf "%s-tls" .Release.Name) .Values.ingress.existingSecret }}
+      secretName: {{ default (printf "%s-tls" (include "open-webui.fullname" .)) .Values.ingress.existingSecret }}
   {{- end }}
   rules:
-  - host: {{ .Values.ingress.host }}
+  - {{- if .Values.ingress.host }}
+    host: {{ tpl .Values.ingress.host . }}
+    {{- end }}
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: {{ include "open-webui.name" . }}
+            name: {{ include "open-webui.fullname" . }}
             port:
               name: http
   {{- range .Values.ingress.additionalHosts }}
-  - host: {{ . | quote }}
+  - host: {{ tpl . $ | quote }}
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: {{ include "open-webui.name" $ }}
+            name: {{ include "open-webui.fullname" $ }}
             port:
               name: http
   {{- end }}

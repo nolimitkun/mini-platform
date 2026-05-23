@@ -6,12 +6,16 @@ metadata:
   name: "{{ include "qdrant.fullname" . }}-test-db-interaction"
   labels:
     {{- include "qdrant.labels" . | nindent 4 }}
+    {{- include "qdrant.additionalLabels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
+{{- with .Values.additionalAnnotations }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
 spec:
   containers:
     - name: test-script
-      image: registry.suse.com/bci/bci-base:latest
+      image: {{ .Values.chartTests.dbInteraction.image | quote }}
       args: ['bash', '/app/entrypoint.sh']
       volumeMounts:
         - mountPath: /app
@@ -19,6 +23,12 @@ spec:
         {{- if .Values.additionalVolumeMounts }}
 {{- toYaml .Values.additionalVolumeMounts | default "" | nindent 8 }}
         {{- end}}
+      resources:
+        {{- toYaml .Values.chartTests.dbInteraction.resources | nindent 8 }}
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 8 }}
+  {{- end }}
   {{- with .Values.nodeSelector }}
   nodeSelector:
     {{- toYaml . | nindent 4 }}
@@ -43,8 +53,12 @@ metadata:
   name: "{{ include "qdrant.fullname" . }}-test-db-interaction"
   labels:
     {{- include "qdrant.labels" . | nindent 4 }}
+    {{- include "qdrant.additionalLabels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
+{{- with .Values.additionalAnnotations }}
+    {{- toYaml . | nindent 4 }}
+{{- end }}
 data:
   entrypoint.sh: |
     #!/bin/bash

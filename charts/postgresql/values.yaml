@@ -15,7 +15,7 @@ global:
   ##
   imagePullSecrets: []
   ## @param global.defaultStorageClass Global default StorageClass for Persistent Volume(s)
-## @param global.storageClass DEPRECATED: use global.defaultStorageClass instead
+  ## @param global.storageClass DEPRECATED: use global.defaultStorageClass instead
   ##
   defaultStorageClass: ""
   storageClass: ""
@@ -25,6 +25,7 @@ global:
     ## @param global.security.allowInsecureImages Allows skipping image verification
     allowInsecureImages: false
   postgresql:
+    ## @param global.postgresql.fullnameOverride Full chart name (overrides `fullnameOverride`)
     ## @param global.postgresql.auth.postgresPassword Password for the "postgres" admin user (overrides `auth.postgresPassword`)
     ## @param global.postgresql.auth.username Name for a custom user to create (overrides `auth.username`)
     ## @param global.postgresql.auth.password Password for the custom user to create (overrides `auth.password`)
@@ -33,7 +34,9 @@ global:
     ## @param global.postgresql.auth.secretKeys.adminPasswordKey Name of key in existing secret to use for PostgreSQL credentials (overrides `auth.secretKeys.adminPasswordKey`). Only used when `global.postgresql.auth.existingSecret` is set.
     ## @param global.postgresql.auth.secretKeys.userPasswordKey Name of key in existing secret to use for PostgreSQL credentials (overrides `auth.secretKeys.userPasswordKey`). Only used when `global.postgresql.auth.existingSecret` is set.
     ## @param global.postgresql.auth.secretKeys.replicationPasswordKey Name of key in existing secret to use for PostgreSQL credentials (overrides `auth.secretKeys.replicationPasswordKey`). Only used when `global.postgresql.auth.existingSecret` is set.
+    ## @param global.postgresql.auth.secretKeys.metricsPasswordKey Name of key in existing secret to use for PostgreSQL credentials (overrides `auth.secretKeys.metricsPasswordKey`). Only used when `global.postgresql.auth.existingSecret` is set.
     ##
+    fullnameOverride: ""
     auth:
       postgresPassword: ""
       username: ""
@@ -44,6 +47,7 @@ global:
         adminPasswordKey: ""
         userPasswordKey: ""
         replicationPasswordKey: ""
+        metricsPasswordKey: ""
     ## @param global.postgresql.service.ports.postgresql PostgreSQL service port (overrides `service.ports.postgresql`)
     ##
     service:
@@ -58,6 +62,11 @@ global:
       ## @param global.compatibility.openshift.adaptSecurityContext Adapt the securityContext sections of the deployment to make them compatible with Openshift restricted-v2 SCC: remove runAsUser, runAsGroup and fsGroup and let the platform use their allowed default IDs. Possible values: auto (apply if the detected running cluster is Openshift), force (perform the adaptation always), disabled (do not perform adaptation)
       ##
       adaptSecurityContext: auto
+  ## @param global.defaultFips Default value for the FIPS configuration (allowed values: '', restricted, relaxed, off). Can be overridden by the 'fips' object
+  ##  Configure FIPS mode: '', 'restricted', 'relaxed', 'off'
+  ##
+  defaultFips: restricted
+
 ## @section Common parameters
 ##
 
@@ -116,9 +125,9 @@ diagnosticMode:
 ## @param image.debug Specify if debug values should be set
 ##
 image:
-  registry: docker.io
+  registry: registry-1.docker.io
   repository: bitnami/postgresql
-  tag: 17.4.0-debian-12-r15
+  tag: latest
   digest: ""
   ## Specify a imagePullPolicy
   ## ref: https://kubernetes.io/docs/concepts/containers/images/#pre-pulled-images
@@ -162,17 +171,25 @@ auth:
   ## @param auth.replicationPassword Password for the replication user. Ignored if `auth.existingSecret` is provided
   ##
   replicationPassword: ""
+  ## @param auth.metricsUsername Name of the metrics user used by postgresql exporter
+  ##
+  metricsUsername: ""
+  ## @param auth.metricsPassword Password for the metrics user used by postgresql exporter. Ignored if `auth.existingSecret` is provided
+  ##
+  metricsPassword: ""
   ## @param auth.existingSecret Name of existing secret to use for PostgreSQL credentials. `auth.postgresPassword`, `auth.password`, and `auth.replicationPassword` will be ignored and picked up from this secret. The secret might also contains the key `ldap-password` if LDAP is enabled. `ldap.bind_password` will be ignored and picked from this secret in this case.
   ##
   existingSecret: ""
   ## @param auth.secretKeys.adminPasswordKey Name of key in existing secret to use for PostgreSQL credentials. Only used when `auth.existingSecret` is set.
   ## @param auth.secretKeys.userPasswordKey Name of key in existing secret to use for PostgreSQL credentials. Only used when `auth.existingSecret` is set.
   ## @param auth.secretKeys.replicationPasswordKey Name of key in existing secret to use for PostgreSQL credentials. Only used when `auth.existingSecret` is set.
+  ## @param auth.secretKeys.metricsPasswordKey Name of key in existing secret to use for PostgreSQL credentials. Only used when `auth.existingSecret` is set.
   ##
   secretKeys:
     adminPasswordKey: postgres-password
     userPasswordKey: password
     replicationPasswordKey: replication-password
+    metricsPasswordKey: metrics-password
   ## @param auth.usePasswordFiles Mount credentials as a files instead of using an environment variable
   ##
   usePasswordFiles: true
@@ -488,6 +505,10 @@ primary:
   ##     memory: 1024Mi
   ##
   resources: {}
+  ## @param primary.fips.openssl Configure OpenSSL FIPS mode: '', 'restricted', 'relaxed', 'off'. If empty (""), 'global.defaultFips' would be used
+  ##
+  fips:
+    openssl: ""
   ## Pod Security Context
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
   ## @param primary.podSecurityContext.enabled Enable security context
@@ -604,6 +625,10 @@ primary:
   ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
   ##
   schedulerName: ""
+  ## @param primary.runtimeClassName Name of the runtime class to be used by pod(s)
+  ## ref: https://kubernetes.io/docs/concepts/containers/runtime-class/
+  ##
+  runtimeClassName: ""
   ## @param primary.terminationGracePeriodSeconds Seconds PostgreSQL primary pod needs to terminate gracefully
   ## ref: https://kubernetes.io/docs/concepts/workloads/pods/pod/#termination-of-pods
   ##
@@ -712,6 +737,9 @@ primary:
   ## PostgreSQL Primary service configuration
   ##
   service:
+    ## @param primary.service.enabled Enable/disable the PostgreSQL primary service
+    ##
+    enabled: true
     ## @param primary.service.type Kubernetes Service type
     ##
     type: ClusterIP
@@ -765,7 +793,7 @@ primary:
     ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#virtual-ips-and-service-proxies
     ##
     sessionAffinity: None
-    ## @param primary.service.sessionAffinityConfig Additional settings for the sessionAffinity
+    ## @param primary.service.sessionAffinityConfig Additional settings for the sessionAffinity. Ignored if `primary.service.sessionAffinity` is `None`
     ## sessionAffinityConfig:
     ##   clientIP:
     ##     timeoutSeconds: 300
@@ -945,6 +973,10 @@ readReplicas:
   ##     memory: 1024Mi
   ##
   resources: {}
+  ## @param readReplicas.fips.openssl Configure OpenSSL FIPS mode: '', 'restricted', 'relaxed', 'off'. If empty (""), 'global.defaultFips' would be used
+  ##
+  fips:
+    openssl: ""
   ## Pod Security Context
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
   ## @param readReplicas.podSecurityContext.enabled Enable security context
@@ -1061,6 +1093,10 @@ readReplicas:
   ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
   ##
   schedulerName: ""
+  ## @param readReplicas.runtimeClassName Name of the runtime class to be used by pod(s)
+  ## ref: https://kubernetes.io/docs/concepts/containers/runtime-class/
+  ##
+  runtimeClassName: ""
   ## @param readReplicas.terminationGracePeriodSeconds Seconds PostgreSQL read only pod needs to terminate gracefully
   ## ref: https://kubernetes.io/docs/concepts/workloads/pods/pod/#termination-of-pods
   ##
@@ -1222,7 +1258,7 @@ readReplicas:
     ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#virtual-ips-and-service-proxies
     ##
     sessionAffinity: None
-    ## @param readReplicas.service.sessionAffinityConfig Additional settings for the sessionAffinity
+    ## @param readReplicas.service.sessionAffinityConfig Additional settings for the sessionAffinity. Ignored if `readReplicas.service.sessionAffinity` is `None`
     ## sessionAffinityConfig:
     ##   clientIP:
     ##     timeoutSeconds: 300
@@ -1319,6 +1355,9 @@ backup:
     ttlSecondsAfterFinished: ""
     ## @param backup.cronjob.restartPolicy Set the cronjob parameter restartPolicy
     restartPolicy: OnFailure
+    ## @param backup.cronjob.podLabels Additional pod labels for backup cronjob pods
+    ##
+    podLabels: {}
     ## @param backup.cronjob.podSecurityContext.enabled Enable PodSecurityContext for CronJob/Backup
     ## @param backup.cronjob.podSecurityContext.fsGroupChangePolicy Set filesystem group change policy
     ## @param backup.cronjob.podSecurityContext.sysctls Set kernel settings using the sysctl interface
@@ -1357,9 +1396,9 @@ backup:
         type: "RuntimeDefault"
     ## @param backup.cronjob.command Set backup container's command to run
     command:
-      - /bin/sh
+      - /bin/bash
       - -c
-      - "pg_dumpall --clean --if-exists --load-via-partition-root --quote-all-identifiers --no-password --file=${PGDUMP_DIR}/pg_dumpall-$(date '+%Y-%m-%d-%H-%M').pgdump"
+      - PGPASSWORD="${PGPASSWORD:-$(< "$PGPASSWORD_FILE")}" pg_dumpall --clean --if-exists --load-via-partition-root --quote-all-identifiers --no-password --file="${PGDUMP_DIR}/pg_dumpall-$(date '+%Y-%m-%d-%H-%M').pgdump"
     ## @param backup.cronjob.labels Set the cronjob labels
     labels: {}
     ## @param backup.cronjob.annotations Set the cronjob annotations
@@ -1381,6 +1420,10 @@ backup:
     ## @param backup.cronjob.resources Set container requests and limits for different resources like CPU or memory
     ## Example:
     resources: {}
+    ## @param backup.cronjob.fips.openssl Configure OpenSSL FIPS mode: '', 'restricted', 'relaxed', 'off'. If empty (""), 'global.defaultFips' would be used
+    ##
+    fips:
+      openssl: ""
     ## resources:
     ##   requests:
     ##     cpu: 1
@@ -1548,6 +1591,10 @@ passwordUpdateJob:
   ##     memory: 1024Mi
   ##
   resources: {}
+  ## @param passwordUpdateJob.fips.openssl Configure OpenSSL FIPS mode: '', 'restricted', 'relaxed', 'off'. If empty (""), 'global.defaultFips' would be used
+  ##
+  fips:
+    openssl: ""
   ## @param passwordUpdateJob.customLivenessProbe Custom livenessProbe that overrides the default one
   ##
   customLivenessProbe: {}
@@ -1594,9 +1641,9 @@ volumePermissions:
   ## @param volumePermissions.image.pullSecrets Init container volume-permissions image pull secrets
   ##
   image:
-    registry: docker.io
+    registry: registry-1.docker.io
     repository: bitnami/os-shell
-    tag: 12-debian-12-r42
+    tag: latest
     digest: ""
     pullPolicy: IfNotPresent
     ## Optionally specify an array of imagePullSecrets.
@@ -1624,6 +1671,10 @@ volumePermissions:
   ##     memory: 1024Mi
   ##
   resources: {}
+  ## @param volumePermissions.fips.openssl Configure OpenSSL FIPS mode: '', 'restricted', 'relaxed', 'off'. If empty (""), 'global.defaultFips' would be used
+  ##
+  fips:
+    openssl: ""
   ## Init container' Security Context
   ## Note: the chown of the data folder is done to containerSecurityContext.runAsUser
   ## and not the below volumePermissions.containerSecurityContext.runAsUser
@@ -1703,9 +1754,9 @@ metrics:
   ## @param metrics.image.pullSecrets Specify image pull secrets
   ##
   image:
-    registry: docker.io
+    registry: registry-1.docker.io
     repository: bitnami/postgres-exporter
-    tag: 0.17.1-debian-12-r5
+    tag: latest
     digest: ""
     pullPolicy: IfNotPresent
     ## Optionally specify an array of imagePullSecrets.
@@ -1844,6 +1895,12 @@ metrics:
   ##     memory: 1024Mi
   ##
   resources: {}
+  ## @param metrics.fips.openssl Configure OpenSSL FIPS mode: '', 'restricted', 'relaxed', 'off'. If empty (""), 'global.defaultFips' would be used
+  ## @param metrics.fips.golang Configure Golang FIPS mode: '', 'restricted', 'relaxed', 'off'. If empty (""), 'global.defaultFips' would be used
+  ##
+  fips:
+    openssl: ""
+    golang: relaxed
   ## Service configuration
   ##
   service:
@@ -1855,8 +1912,7 @@ metrics:
     ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#choosing-your-own-ip-address
     ##
     clusterIP: ""
-    ## @param metrics.service.sessionAffinity Control where client requests go, to the same pod or round-robin
-    ## Values: ClientIP or None
+    ## @param metrics.service.sessionAffinity Control where client requests go, to the same pod or round-robin. Allowed values: `ClientIP` or `None`
     ## ref: https://kubernetes.io/docs/concepts/services-networking/service/
     ##
     sessionAffinity: None
@@ -1919,12 +1975,12 @@ metrics:
     ## Make sure to constraint the rules to the current postgresql service.
     ## rules:
     ##   - alert: HugeReplicationLag
-    ##     expr: pg_replication_lag{service="{{ printf "%s-metrics" (include "common.names.fullname" .) }}"} / 3600 > 1
+    ##     expr: pg_replication_lag{service="{{ printf "%s-metrics" (include "postgresql.v1.chart.fullname" .) }}"} / 3600 > 1
     ##     for: 1m
     ##     labels:
     ##       severity: critical
     ##     annotations:
-    ##       description: replication for {{ include "common.names.fullname" . }} PostgreSQL is lagging by {{ "{{ $value }}" }} hour(s).
+    ##       description: replication for {{ include "postgresql.v1.chart.fullname" . }} PostgreSQL is lagging by {{ "{{ $value }}" }} hour(s).
     ##       summary: PostgreSQL replication is lagging by {{ "{{ $value }}" }} hour(s).
     ##
     rules: []

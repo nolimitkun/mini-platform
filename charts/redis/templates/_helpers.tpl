@@ -51,29 +51,7 @@ Return sysctl image
 Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "redis.imagePullSecrets" -}}
-{{- include "common.images.renderPullSecrets" (dict "images" (list .Values.image .Values.sentinel.image .Values.metrics.image .Values.volumePermissions.image .Values.sysctl.image) "context" $) -}}
-{{- end -}}
-
-{{/*
-Return the appropriate apiVersion for networkpolicy.
-*/}}
-{{- define "networkPolicy.apiVersion" -}}
-{{- if semverCompare ">=1.4-0, <1.7-0" .Capabilities.KubeVersion.GitVersion -}}
-{{- print "extensions/v1beta1" -}}
-{{- else -}}
-{{- print "networking.k8s.io/v1" -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Return the appropriate apiGroup for PodSecurityPolicy.
-*/}}
-{{- define "podSecurityPolicy.apiGroup" -}}
-{{- if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion -}}
-{{- print "policy" -}}
-{{- else -}}
-{{- print "extensions" -}}
-{{- end -}}
+{{- include "common.images.renderPullSecrets" (dict "images" (list .Values.image .Values.sentinel.image .Values.metrics.image .Values.volumePermissions.image .Values.sysctl.image .Values.kubectl.image) "context" $) -}}
 {{- end -}}
 
 {{/*
@@ -227,7 +205,31 @@ Return Redis&reg; password
 */}}
 {{- define "redis.password" -}}
 {{- if or .Values.auth.enabled .Values.global.redis.password -}}
-    {{- include "common.secrets.passwords.manage" (dict "secret" (include "redis.secretName" .) "key" (include "redis.secretPasswordKey" .) "providedValues" (list "global.redis.password" "auth.password") "length" 10 "skipB64enc" true "skipQuote" true "honorProvidedValues" true "context" $) -}}
+    {{- $password_tmp := include "common.secrets.passwords.manage" (dict "secret" (include "redis.secretName" .) "key" (include "redis.secretPasswordKey" .) "providedValues" (list "global.redis.password" "auth.password") "length" 10 "skipB64enc" true "skipQuote" true "honorProvidedValues" true "context" $) -}}
+    {{- $_ := set .Values.global.redis "password" $password_tmp -}}
+    {{- .Values.global.redis.password -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Check if password secret is based on user-provided credentials via chart values
+*/}}
+{{- define "redis.valuesBasedSecret" -}}
+{{- if and .Values.auth.enabled (not .Values.auth.existingSecret) (or (not (empty .Values.global.redis.password)) (not (empty .Values.auth.password))) }}
+    {{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret value if found or an empty string otherwise
+Used for fetching Redis ACL user passwords from Kubernetes Secrets
+*/}}
+{{- define "common.secrets.get" -}}
+{{- $secret := (lookup "v1" "Secret" .context.Release.Namespace .secret) -}}
+{{- if and $secret (index $secret.data .key) -}}
+    {{- index $secret.data .key | b64dec -}}
+{{- else -}}
+    {{- "" -}}
 {{- end }}
 {{- end }}
 
@@ -243,7 +245,6 @@ Compile all warnings into a single message, and call fail.
 */}}
 {{- define "redis.validateValues" -}}
 {{- $messages := list -}}
-{{- $messages := append $messages (include "redis.validateValues.topologySpreadConstraints" .) -}}
 {{- $messages := append $messages (include "redis.validateValues.architecture" .) -}}
 {{- $messages := append $messages (include "redis.validateValues.podSecurityPolicy.create" .) -}}
 {{- $messages := append $messages (include "redis.validateValues.tls" .) -}}
@@ -253,15 +254,6 @@ Compile all warnings into a single message, and call fail.
 
 {{- if $message -}}
 {{-   printf "\nVALUES VALIDATION:\n%s" $message | fail -}}
-{{- end -}}
-{{- end -}}
-
-{{/* Validate values of Redis&reg; - spreadConstrainsts K8s version */}}
-{{- define "redis.validateValues.topologySpreadConstraints" -}}
-{{- if and (semverCompare "<1.16-0" .Capabilities.KubeVersion.GitVersion) .Values.replica.topologySpreadConstraints -}}
-redis: topologySpreadConstraints
-    Pod Topology Spread Constraints are only available on K8s  >= 1.16
-    Find more information at https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
 {{- end -}}
 {{- end -}}
 

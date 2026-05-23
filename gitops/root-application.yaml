@@ -1,0 +1,28 @@
+# Replace both repository placeholders after this repository is pushed to Git.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mini-platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: REPLACE_WITH_GIT_REPOSITORY_URL
+    targetRevision: main
+    path: gitops/mini-platform
+    helm:
+      parameters:
+        - name: repoURL
+          value: REPLACE_WITH_GIT_REPOSITORY_URL
+        - name: targetRevision
+          value: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+

@@ -4,9 +4,19 @@ metadata:
   name: {{ include "qdrant.fullname" . }}
   labels:
     {{- include "qdrant.labels" . | nindent 4 }}
+    {{- include "qdrant.additionalLabels" . | nindent 4 }}
+{{- with .Values.additionalAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+{{- end }}
 data:
   initialize.sh: |
     #!/bin/sh
+    echo "Soft limits"
+    ulimit -a -S
+    echo "Hard limits"
+    ulimit -a -H
+    ulimit -n $(ulimit -Hn)
     SET_INDEX=${HOSTNAME##*-}
     {{- if and (.Values.snapshotRestoration.enabled) (eq (.Values.replicaCount | quote)  (1 | quote)) }}
     echo "Starting initializing for pod $SET_INDEX and snapshots restoration"

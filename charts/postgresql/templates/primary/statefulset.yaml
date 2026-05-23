@@ -56,6 +56,9 @@ spec:
       {{- if .Values.primary.hostAliases }}
       hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.primary.hostAliases "context" $) | nindent 8 }}
       {{- end }}
+      {{- if .Values.primary.runtimeClassName }}
+      runtimeClassName: {{ .Values.primary.runtimeClassName }}
+      {{- end }}
       {{- if .Values.primary.affinity }}
       affinity: {{- include "common.tplvalues.render" (dict "value" .Values.primary.affinity "context" $) | nindent 8 }}
       {{- else }}
@@ -108,6 +111,13 @@ spec:
             - |
               cp /tmp/certs/* /opt/bitnami/postgresql/certs/
               chmod 600 {{ include "postgresql.v1.tlsCertKey" . }}
+          {{- if include "common.fips.enabled" . }}
+          env:
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.volumePermissions.fips "global" .Values.global) | quote }}
+            - name: OPENSSL_FIPS_PROVIDER_PATH
+              value: {{ include "common.fips.openssl.provider.path" (dict "fips" .Values.volumePermissions.fips "global" .Values.global) | quote }}
+          {{- end }}
           volumeMounts:
             - name: empty-dir
               mountPath: /tmp
@@ -161,6 +171,13 @@ spec:
           {{- else }}
           securityContext: {{- .Values.volumePermissions.containerSecurityContext | toYaml | nindent 12 }}
           {{- end }}
+          {{- if include "common.fips.enabled" . }}
+          env:
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.volumePermissions.fips "global" .Values.global) | quote }}
+            - name: OPENSSL_FIPS_PROVIDER_PATH
+              value: {{ include "common.fips.openssl.provider.path" (dict "fips" .Values.volumePermissions.fips "global" .Values.global) | quote }}
+          {{- end }}
           volumeMounts:
             - name: empty-dir
               mountPath: /tmp
@@ -209,6 +226,12 @@ spec:
               value: {{ .Values.containerPorts.postgresql | quote }}
             - name: POSTGRESQL_VOLUME_DIR
               value: {{ .Values.primary.persistence.mountPath | quote }}
+            {{- if include "common.fips.enabled" . }}
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.primary.fips "global" .Values.global) | quote }}
+            - name: OPENSSL_FIPS_PROVIDER_PATH
+              value: {{ include "common.fips.openssl.provider.path" (dict "fips" .Values.primary.fips "global" .Values.global) | quote }}
+            {{- end }}
             {{- if .Values.primary.persistence.mountPath }}
             - name: PGDATA
               value: {{ .Values.postgresqlDataDir | quote }}
@@ -539,16 +562,32 @@ spec:
               value: {{ printf "127.0.0.1:%d/postgres?sslmode=disable" (int (include "postgresql.v1.service.port" .)) }}
             {{- if .Values.auth.usePasswordFiles }}
             - name: DATA_SOURCE_PASS_FILE
-              value: {{ printf "/opt/bitnami/postgresql/secrets/%s" (include (ternary "postgresql.v1.adminPasswordKey" "postgresql.v1.userPasswordKey" (empty $customUser)) .) }}
+              {{- if and (not (empty .Values.auth.metricsUsername)) (ne .Values.auth.metricsUsername "postgres")}}
+              value: {{ printf "/opt/bitnami/postgresql/secrets/%s" (include "postgresql.v1.metricsPasswordKey" .) }}
+              {{- else }}
+              value: {{ printf "/opt/bitnami/postgresql/secrets/%s" (include "postgresql.v1.adminPasswordKey" .) }}
+              {{- end }}
             {{- else }}
             - name: DATA_SOURCE_PASS
               valueFrom:
                 secretKeyRef:
                   name: {{ include "postgresql.v1.secretName" . }}
-                  key: {{ include (ternary "postgresql.v1.adminPasswordKey" "postgresql.v1.userPasswordKey" (empty $customUser)) . }}
+                  {{- if and (not (empty .Values.auth.metricsUsername)) (ne .Values.auth.metricsUsername "postgres")}}
+                  key: {{ include "postgresql.v1.metricsPasswordKey" . }}
+                  {{- else }}
+                  key: {{ include "postgresql.v1.adminPasswordKey" . }}
+                  {{- end }}
             {{- end }}
             - name: DATA_SOURCE_USER
-              value: {{ default "postgres" $customUser | quote }}
+              value: {{ coalesce .Values.auth.metricsUsername "postgres" }}
+            {{- if include "common.fips.enabled" . }}
+            - name: OPENSSL_FIPS
+              value: {{ include "common.fips.config" (dict "tech" "openssl" "fips" .Values.metrics.fips "global" .Values.global) | quote }}
+            - name: OPENSSL_FIPS_PROVIDER_PATH
+              value: {{ include "common.fips.openssl.provider.path" (dict "fips" .Values.metrics.fips "global" .Values.global) | quote }}
+            - name: GODEBUG
+              value: {{ include "common.fips.config" (dict "tech" "golang" "fips" .Values.metrics.fips "global" .Values.global) | quote }}
+            {{- end }}
             {{- if .Values.metrics.extraEnvVars }}
             {{- include "common.tplvalues.render" (dict "value" .Values.metrics.extraEnvVars "context" $) | nindent 12 }}
             {{- end }}

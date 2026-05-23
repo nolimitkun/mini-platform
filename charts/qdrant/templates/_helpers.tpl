@@ -52,6 +52,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Additional (global) labels
+*/}}
+{{- define "qdrant.additionalLabels" -}}
+{{- with .Values.additionalLabels }}
+{{- range $key, $value := . }}
+{{ $key }}: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "qdrant.serviceAccountName" -}}
@@ -85,7 +96,7 @@ Create secret
 {{- else if .Values.apiKey -}}
 {{- $apiKey = .Values.apiKey -}}
 {{- end -}}
-{{- if kindIs "map" .Values.apiKey -}}
+{{- if kindIs "map" .Values.readOnlyApiKey -}}
 {{- if .Values.readOnlyApiKey.valueFrom -}}
 {{- /* Retrieve the value from the secret as specified in valueFrom */ -}}
 {{- $secretName := .Values.readOnlyApiKey.valueFrom.secretKeyRef.name -}}

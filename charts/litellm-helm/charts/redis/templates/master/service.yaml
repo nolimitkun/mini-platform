@@ -1,5 +1,5 @@
 {{- /*
-Copyright Broadcom, Inc. All Rights Reserved.
+Copyright VMware, Inc.
 SPDX-License-Identifier: APACHE-2.0
 */}}
 
@@ -45,7 +45,7 @@ spec:
   externalIPs: {{- include "common.tplvalues.render" (dict "value" .Values.master.service.externalIPs "context" $) | nindent 4 }}
   {{- end }}
   ports:
-    - name: {{ .Values.master.service.portNames.redis }}
+    - name: tcp-redis
       port: {{ .Values.master.service.ports.redis }}
       targetPort: redis
       {{- if and (or (eq .Values.master.service.type "NodePort") (eq .Values.master.service.type "LoadBalancer")) .Values.master.service.nodePorts.redis}}

@@ -33,6 +33,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if .Values.hostUsers }}
+      hostUsers: true
+      {{- end }}
       automountServiceAccountToken: {{ .Values.automountServiceAccountToken }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -119,6 +122,14 @@ spec:
           ports:
             - containerPort: {{ . }}
           {{- end }}
+          {{- with .Values.configmapReload.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.configmapReload.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.configmapReload.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -177,7 +188,7 @@ spec:
             - --web.external-url={{ .Values.baseURL }}
             {{- end }}
           ports:
-            - name: http
+            - name: {{ .Values.containerPortName }}
               containerPort: 9093
               protocol: TCP
             {{- if or (gt (int .Values.replicaCount) 1) (.Values.additionalPeers) }}
@@ -237,6 +248,14 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: storage
+        {{- with .Values.persistence.annotations }}
+        annotations:
+          {{ toYaml . | nindent 14 }}
+        {{- end }}
+        {{- with .Values.persistence.labels }}
+        labels:
+          {{ toYaml . | nindent 14 }}
+        {{- end }}
       spec:
         accessModes:
           {{- toYaml .Values.persistence.accessModes | nindent 10 }}
@@ -252,5 +271,10 @@ spec:
       {{- end }}
   {{- else }}
         - name: storage
+            {{- with .Values.persistence.emptyDir }}
+          emptyDir:
+            {{- toYaml . | nindent 12 }}
+            {{- else }}
           emptyDir: {}
+            {{- end -}}
   {{- end }}

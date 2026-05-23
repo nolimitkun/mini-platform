@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Values.websocket.redis.name }}
+  name: {{ include "open-webui.fullname" . }}-redis
   namespace: {{ include "open-webui.namespace" . }}
   labels:
     {{- include "websocket.redis.labels" . | nindent 4 }}
@@ -21,6 +21,9 @@ spec:
     metadata:
       labels:
         {{- include "websocket.redis.labels" . | nindent 8 }}
+        {{- with .Values.websocket.redis.pods.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       annotations:
         {{- with .Values.websocket.redis.pods.annotations }}
         {{- toYaml . | nindent 8 }}
@@ -31,7 +34,7 @@ spec:
         - name: {{ .Values.websocket.redis.image.pullSecretName }}
       {{- end }}
       containers:
-      - name: {{ .Values.websocket.redis.name }}
+      - name: {{ include "open-webui.fullname" . }}-redis
         image: "{{ .Values.websocket.redis.image.repository }}:{{ .Values.websocket.redis.image.tag }}"
         imagePullPolicy: {{ .Values.websocket.redis.image.pullPolicy }}
         {{- with .Values.websocket.redis.command }}
@@ -49,6 +52,15 @@ spec:
         resources:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+        {{- with .Values.websocket.redis.containerSecurityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- if and (hasKey .Values.websocket.redis.containerSecurityContext "readOnlyRootFilesystem") .Values.websocket.redis.containerSecurityContext.readOnlyRootFilesystem }}
+        volumeMounts:
+          - name: data
+            mountPath: "/data"
+        {{- end }}
       {{- with .Values.websocket.redis.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
@@ -57,15 +69,24 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.websocket.redis.securityContext }}
+      {{- with .Values.websocket.redis.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.websocket.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (hasKey .Values.websocket.redis.containerSecurityContext "readOnlyRootFilesystem") .Values.websocket.redis.containerSecurityContext.readOnlyRootFilesystem }}
+      volumes:
+        - name: data
+          emptyDir: {}
       {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Values.websocket.redis.name }}
+  name: {{ include "open-webui.fullname" . }}-redis
   namespace: {{ include "open-webui.namespace" . }}
   labels:
     {{- include "websocket.redis.labels" . | nindent 4 }}
@@ -82,7 +103,7 @@ spec:
   type: {{ .Values.websocket.redis.service.type | default "ClusterIP" }}
   ports:
   - protocol: TCP
-    name: http
+    name: {{ .Values.websocket.redis.service.portName | default "http" }}
     port: {{ .Values.websocket.redis.service.port }}
     targetPort: http
     {{- if .Values.websocket.redis.service.nodePort }}

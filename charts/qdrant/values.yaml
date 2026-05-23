@@ -10,7 +10,7 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 args: ["./config/initialize.sh"]
-env: {}
+env: []
   # - name: QDRANT_ALLOW_RECOVERY_MODE
   #   value: true
 
@@ -82,6 +82,8 @@ startupProbe:
   successThreshold: 1
 
 additionalLabels: {}
+# additionalAnnotations will be added to all top-level resources (StatefulSet, Service, ConfigMap, etc.)
+additionalAnnotations: {}
 podAnnotations: {}
 podLabels: {}
 
@@ -114,8 +116,8 @@ lifecycle:
       # duration to be greater than the LB's health check interval.
       command: ["sleep", "3"]
 
-# If true ensures that the pre-existing files on the storage and snapshot volume are owned by the container's
-# user and fsGroup
+# Unless .Values.image.useUnprivilegedImage is set to true, ensures that the pre-existing
+# files on the storage and snapshot volume are owned by the container's user and fsGroup.
 updateVolumeFsOwnership: true
 
 nodeSelector: {}
@@ -143,9 +145,11 @@ persistence:
   accessModes: ["ReadWriteOnce"]
   size: 10Gi
   annotations: {}
+  additionalLabels: {}
   # storageVolumeName: qdrant-storage
   # storageSubPath: ""
   # storageClassName: local-path
+  # volumeAttributesClassName: ""
 
 # If you use snapshots or the snapshot shard transfer mechanism, we recommend
 # creating a separate volume of the same size as your main volume so that your
@@ -155,10 +159,12 @@ snapshotPersistence:
   accessModes: ["ReadWriteOnce"]
   size: 10Gi
   annotations: {}
+  additionalLabels: {}
   # snapshotsVolumeName: qdrant-snapshots
   # snapshotsSubPath: ""
   # You can change the storageClassName to ensure snapshots are saved to cold storage.
   # storageClassName: local-path
+  # volumeAttributesClassName: ""
 
 snapshotRestoration:
   enabled: false
@@ -179,6 +185,8 @@ config:
       enable_tls: false
     consensus:
       tick_period_ms: 100
+  service:
+    enable_tls: false
 
 sidecarContainers: []
 # sidecarContainers:
@@ -213,6 +221,15 @@ metrics:
     ## ref: https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#relabelconfig
     ##
     relabelings: []
+    ## Authorization to apply to the metrics endpoint for the cases when the API key(s) are configured externally
+    ## ref: https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.SafeAuthorization
+    ##
+    authorization: {}
+    # authorization:
+    #   type: Bearer
+    #   credentials:
+    #     name: external-secret-with-api-key
+    #     key: api-key
 
 serviceAccount:
   annotations: {}
@@ -221,7 +238,9 @@ priorityClassName: ""
 
 shareProcessNamespace: false
 
-# We disourage changing this setting. Using the "OrderedReady" policy in a
+# terminationGracePeriodSeconds: 30
+
+# We discourage changing this setting. Using the "OrderedReady" policy in a
 # multi-node cluster will cause a deadlock where nodes refuse to become
 # "Ready" until all nodes are running.
 podManagementPolicy: Parallel
@@ -262,3 +281,14 @@ additionalVolumes: []
 additionalVolumeMounts: []
 # - name: volumeName
 #   mountPath: "/mount/path"
+
+chartTests:
+  dbInteraction:
+    image: registry.suse.com/bci/bci-base:latest
+    resources:
+      requests:
+        cpu: 100m
+        memory: 200Mi
+      limits:
+        cpu: 100m
+        memory: 200Mi

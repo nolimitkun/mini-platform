@@ -1,9 +1,10 @@
 nameOverride: ""
+fullnameOverride: ""
 namespaceOverride: ""
 
 # -- Value of cluster domain
 clusterDomain: cluster.local
-
+extraLabels: {}
 annotations: {}
 podAnnotations: {}
 podLabels: {}
@@ -44,7 +45,34 @@ persistence:
 
 serviceAccount:
   enable: true
+  create: true
+  name: ""
   automountServiceAccountToken: false
+
+# -- Configure pod security context
+# ref: <https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container>
+podSecurityContext:
+  {}
+  # fsGroupChangePolicy: Always
+  # sysctls: []
+  # supplementalGroups: []
+  # fsGroup: 1001
+
+# -- Configure container security context
+# ref: <https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-containe>
+containerSecurityContext:
+  {}
+  # runAsUser: 1001
+  # runAsGroup: 1001
+  # runAsNonRoot: true
+  # privileged: false
+  # allowPrivilegeEscalation: false
+  # readOnlyRootFilesystem: false
+  # capabilities:
+  #   drop:
+  #     - ALL
+  # seccompProfile:
+  #   type: "RuntimeDefault"
 
 # -- Node labels for pod assignment.
 nodeSelector: {}
@@ -54,6 +82,9 @@ tolerations: []
 
 # -- Affinity for pod assignment
 affinity: {}
+
+# -- Topology spread constraints for pod distribution
+topologySpreadConstraints: []
 
 # -- HostAliases to be added to hosts-file of each container
 hostAliases: []
@@ -92,6 +123,9 @@ extraEnvVars:
   #       key: secret-key
   # - name: LANGFUSE_HOST
   #   value: https://us.cloud.langfuse.com
+
+# -- Additional environments variables on the output Deployment definition, common across environments.
+commonEnvVars: []
 
 # -- Configure container volume mounts
 # ref: <https://kubernetes.io/docs/tasks/configure-pod-container/configure-volume-storage/>

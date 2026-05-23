@@ -17,17 +17,28 @@ Set the name of the Open WebUI resources
 {{- end -}}
 
 {{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
+*/}}
+{{- define "open-webui.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Set the name of the integrated Ollama resources
 */}}
 {{- define "ollama.name" -}}
 open-webui-ollama
-{{- end -}}
-
-{{/*
-Set the name of the integrated Pipelines resources
-*/}}
-{{- define "pipelines.name" -}}
-open-webui-pipelines
 {{- end -}}
 
 {{/*
@@ -47,10 +58,28 @@ as a dependency of the Open WebUI chart
 */}}
 {{- define "ollamaLocalUrl" -}}
 {{- if .Values.ollama.enabled -}}
-{{- $clusterDomain := .Values.clusterDomain }}
-{{- $ollamaServicePort := .Values.ollama.service.port | toString }}
-{{- printf "http://%s.%s.svc.%s:%s" (default .Values.ollama.name .Values.ollama.fullnameOverride) (.Release.Namespace) $clusterDomain $ollamaServicePort }}
+{{- $clusterDomain := .Values.clusterDomain -}}
+{{- $ollamaServicePort := .Values.ollama.service.port | toString -}}
+{{- $ollamaName := .Values.ollama.fullnameOverride -}}
+{{- if not $ollamaName -}}
+{{- $ollamaName = printf "%s-%s" .Release.Name (default "ollama" .Values.ollama.nameOverride) -}}
+{{- end -}}
+{{- printf "http://%s.%s.svc.%s:%s" $ollamaName (.Release.Namespace) $clusterDomain $ollamaServicePort -}}
+{{- end -}}
 {{- end }}
+
+{{/*
+Generates the URL for accessing the Tika service within the Kubernetes cluster when the
+tika.enabled value is set to true
+*/}}
+{{- define "tikaLocalUrl" -}}
+{{- if .Values.tika.enabled -}}
+{{- $tikaName := .Values.tika.fullnameOverride -}}
+{{- if not $tikaName -}}
+{{- $tikaName = printf "%s-%s" .Release.Name (default "tika" .Values.tika.nameOverride) -}}
+{{- end -}}
+{{- printf "http://%s:9998" $tikaName -}}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -86,6 +115,7 @@ helm.sh/chart: {{ include "chart.name" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/name: {{ include "open-webui.name" . }}
 {{- end }}
 
 {{/*
@@ -101,6 +131,12 @@ Create selector labels to include on all Open WebUI resources
 {{- define "open-webui.selectorLabels" -}}
 {{ include "base.selectorLabels" . }}
 app.kubernetes.io/component: {{ .Chart.Name }}
+{{- end }}
+
+{{- define "open-webui.extraLabels" -}}
+{{- with .Values.extraLabels }}
+{{- tpl (toYaml .) $ }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -128,30 +164,25 @@ Create labels to include on chart all Ollama resources
 {{- end }}
 
 {{/*
-Create selector labels to include on chart all Pipelines resources
-*/}}
-{{- define "pipelines.selectorLabels" -}}
-{{ include "base.selectorLabels" . }}
-app.kubernetes.io/component: {{ include "pipelines.name" . }}
-{{- end }}
-
-{{/*
-Create labels to include on chart all Pipelines resources
-*/}}
-{{- define "pipelines.labels" -}}
-{{ include "base.labels" . }}
-{{ include "pipelines.selectorLabels" . }}
-{{- end }}
-
-{{/*
 Create the service endpoint to use for Pipelines if the subchart is used
 */}}
 {{- define "pipelines.serviceEndpoint" -}}
 {{- if .Values.pipelines.enabled -}}
-{{- $clusterDomain := .Values.clusterDomain }}
-{{- $pipelinesServicePort := .Values.pipelines.service.port | toString }}
-{{- printf "http://%s.%s.svc.%s:%s" (include "pipelines.name" .) (.Release.Namespace) $clusterDomain $pipelinesServicePort }}
-{{- end }}
+{{- $clusterDomain := .Values.clusterDomain -}}
+{{- $pipelinesServicePort := .Values.pipelines.service.port | toString -}}
+{{- $pipelinesName := "" -}}
+{{- if .Values.pipelines.fullnameOverride -}}
+{{- $pipelinesName = .Values.pipelines.fullnameOverride -}}
+{{- else -}}
+{{- $chartName := default "pipelines" .Values.pipelines.nameOverride -}}
+{{- if contains $chartName .Release.Name -}}
+{{- $pipelinesName = .Release.Name -}}
+{{- else -}}
+{{- $pipelinesName = printf "%s-%s" .Release.Name $chartName -}}
+{{- end -}}
+{{- end -}}
+{{- printf "http://%s.%s.svc.%s:%s" $pipelinesName (.Release.Namespace) $clusterDomain $pipelinesServicePort -}}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -159,7 +190,7 @@ Create selector labels to include on chart all websocket resources
 */}}
 {{- define "websocket.redis.selectorLabels" -}}
 {{ include "base.selectorLabels" . }}
-app.kubernetes.io/component: {{ .Values.websocket.redis.name }}
+app.kubernetes.io/component: {{ include "open-webui.fullname" . }}-redis
 {{- end }}
 
 {{/*
@@ -168,4 +199,198 @@ Create labels to include on chart all websocket resources
 {{- define "websocket.redis.labels" -}}
 {{ include "base.labels" . }}
 {{ include "websocket.redis.selectorLabels" . }}
+{{- end }}
+
+{{/*
+Generate the websocket Redis URL
+*/}}
+{{- define "websocket.redis.url" -}}
+{{- if .Values.websocket.url -}}
+{{- .Values.websocket.url -}}
+{{- else -}}
+{{- $clusterDomain := .Values.clusterDomain -}}
+{{- printf "redis://%s-redis.%s.svc.%s:6379/0" (include "open-webui.fullname" .) (.Release.Namespace) $clusterDomain -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Create the service endpoint URL for the terminals orchestrator subchart
+*/}}
+{{- define "terminals.serviceEndpoint" -}}
+{{- if .Values.terminals.enabled -}}
+{{- $clusterDomain := .Values.clusterDomain -}}
+{{- $terminalsPort := (.Values.terminals.orchestrator.service.port | default 8080) | toString -}}
+{{- $terminalsName := "" -}}
+{{- if .Values.terminals.fullnameOverride -}}
+{{- $terminalsName = .Values.terminals.fullnameOverride -}}
+{{- else -}}
+{{- $chartName := default "terminals" .Values.terminals.nameOverride -}}
+{{- if contains $chartName .Release.Name -}}
+{{- $terminalsName = .Release.Name -}}
+{{- else -}}
+{{- $terminalsName = printf "%s-%s" .Release.Name $chartName -}}
+{{- end -}}
+{{- end -}}
+{{- printf "http://%s-orchestrator.%s.svc.%s:%s" $terminalsName (.Release.Namespace) $clusterDomain $terminalsPort -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get the terminals API key secret name (parent chart helper)
+*/}}
+{{- define "open-webui.terminals.secretName" -}}
+{{- if .Values.terminals.existingSecret -}}
+{{- .Values.terminals.existingSecret -}}
+{{- else -}}
+{{- $terminalsName := "" -}}
+{{- if .Values.terminals.fullnameOverride -}}
+{{- $terminalsName = .Values.terminals.fullnameOverride -}}
+{{- else -}}
+{{- $chartName := default "terminals" .Values.terminals.nameOverride -}}
+{{- if contains $chartName .Release.Name -}}
+{{- $terminalsName = .Release.Name -}}
+{{- else -}}
+{{- $terminalsName = printf "%s-%s" .Release.Name $chartName -}}
+{{- end -}}
+{{- end -}}
+{{- printf "%s-api-key" $terminalsName -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validate SSO ClientSecret to be set literally or via Secret
+*/}}
+{{- define "sso.validateClientSecret" -}}
+{{- $provider := .provider }}
+{{- $values := .values }}
+{{- if and (empty (index $values $provider "clientSecret")) (empty (index $values $provider "clientExistingSecret")) }}
+  {{- fail (printf "You must provide either .Values.sso.%s.clientSecret or .Values.sso.%s.clientExistingSecret" $provider $provider) }}
+{{- end }}
+{{- end }}
+
+{{- /*
+Fail template rendering if invalid log component
+*/ -}}
+{{- define "logging.isValidComponent" -}}
+  {{- $component := . | lower -}}
+  {{- $validComponents := dict
+      "audio" true
+      "comfyui" true
+      "config" true
+      "db" true
+      "images" true
+      "main" true
+      "models" true
+      "ollama" true
+      "openai" true
+      "rag" true
+      "webhook" true
+  -}}
+  {{- hasKey $validComponents $component -}}
+{{- end }}
+
+
+{{- define "logging.assertValidComponent" -}}
+  {{- $component := lower . -}}
+  {{- $res := include "logging.isValidComponent" $component }}
+  {{- if ne $res "true" }}
+    {{- fail (printf "Invalid logging component name: '%s'. Valid names: audio, comfyui, config, db, images, main, models, ollama, openai, rag, webhook" $component) }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Fail template rendering if invalid log level
+*/ -}}
+{{- define "logging.assertValidLevel" -}}
+  {{- $level := lower . }}
+  {{- $validLevels := dict "notset" true "debug" true "info" true "warning" true "error" true "critical" true }}
+  {{- if not (hasKey $validLevels $level) }}
+    {{- fail (printf "Invalid log level: '%s'. Valid values are: notset, debug, info, warning, error, critical" $level) }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Render a logging env var for a component, validating value
+*/ -}}
+{{- define "logging.componentEnvVar" -}}
+  {{- $name := .componentName }}
+  {{- $level := .logLevel }}
+{{- include "logging.assertValidComponent" $name -}}
+{{- include "logging.assertValidLevel" $level }}
+- name: {{ printf "%s_LOG_LEVEL" (upper $name) | quote }}
+  value: {{ $level | quote | trim }}
+{{- end }}
+
+{{/*
+Return true if the user has defined a custom WEBUI_URL in extraEnvVars.
+Supports either a map or a list of maps.
+Usage: {{ include "open-webui.hasCustomWebUIUrl" . }}
+*/}}
+{{- define "open-webui.hasCustomWebUIUrl" -}}
+  {{- $found := false -}}
+  {{- $extra := .Values.extraEnvVars -}}
+  {{- if kindIs "map" $extra }}
+    {{- if hasKey $extra "WEBUI_URL" -}}
+      {{- $found = true -}}
+    {{- end -}}
+  {{- else if kindIs "slice" $extra }}
+    {{- range $extra }}
+      {{- if eq .name "WEBUI_URL" }}
+        {{- $found = true -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if $found }}true{{- end -}}
+{{- end -}}
+
+{{- /*
+Constructs a string containing the URLs of the Open WebUI based on the ingress configuration
+used to populate the variable WEBUI_URL  
+*/ -}}
+{{- define "open-webui.url" -}}
+  {{- $proto := "http" -}}
+  {{- if .Values.ingress.tls }}
+    {{- $proto = "https" -}}
+  {{- end }}
+  {{- printf "%s://%s" $proto .Values.ingress.host }}
+{{- end }}
+
+{{/*
+Convert a map of environment variables to Kubernetes env var format.
+Accepts a dict with keys "envVars" (the env var data) and "root" (the root Helm context).
+*/}}
+{{- define "open-webui.env" -}}
+{{- $root := .root -}}
+{{- $envVars := .envVars -}}
+{{- if kindIs "map" $envVars }}
+  {{- range $key, $val := $envVars }}
+- name: {{ $key }}
+    {{- if kindIs "map" $val }}
+      {{- tpl (toYaml $val) $root | nindent 2 }}
+    {{- else if kindIs "string" $val }}
+  value: {{ tpl $val $root | quote }}
+    {{- else }}
+  value: {{ $val | quote }}
+    {{- end }}
+  {{- end }}
+{{- else }}
+  {{- tpl (toYaml $envVars) $root }}
+{{- end }}
+{{- end }}
+
+{{- /*
+Define a docker tag that should use for the deployment
+*/ -}}
+{{- define "open-webui.tag" -}}
+{{- $image := .Values.image }}
+{{- if $image.tag }}
+{{- /* If user provided an explicit image.tag, use it */ -}}
+{{- $image.tag -}}
+{{- else if $image.useSlim }}
+{{- /* If useSlim is true and no explicit tag, use Chart.AppVersion-slim */ -}}
+{{- printf "%s-slim" .Chart.AppVersion -}}
+{{- else }}
+{{- /* Fallback to Chart.AppVersion */ -}}
+{{- .Chart.AppVersion -}}
+{{- end }}
 {{- end }}

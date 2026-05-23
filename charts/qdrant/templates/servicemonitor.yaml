@@ -4,10 +4,15 @@ apiVersion: monitoring.coreos.com/v1
 metadata:
   labels:
     {{- include "qdrant.labels" . | nindent 4 }}
+    {{- include "qdrant.additionalLabels" . | nindent 4 }}
 {{- with .Values.metrics.serviceMonitor.additionalLabels }}
 {{- toYaml . | nindent 4 }}
 {{- end }}
   name: {{ include "qdrant.fullname" . }}
+{{- with .Values.additionalAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+{{- end }}
 spec:
   endpoints:
     - honorLabels: true
@@ -24,7 +29,10 @@ spec:
       relabelings:
 {{ tpl (toYaml .Values.metrics.serviceMonitor.relabelings | indent 8) . }}
 {{- end }}
-{{- if .Values.readOnlyApiKey }}
+{{- if .Values.metrics.serviceMonitor.authorization }}
+      authorization:
+{{ tpl (toYaml .Values.metrics.serviceMonitor.authorization | indent 8) . }}
+{{- else if .Values.readOnlyApiKey }}
       authorization:
         type: Bearer
         credentials:

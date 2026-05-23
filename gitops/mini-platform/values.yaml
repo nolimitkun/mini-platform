@@ -1,0 +1,81 @@
+# Git URL containing this directory, charts/, and values/. Set it when
+# bootstrapping the root Application.
+repoURL: ""
+targetRevision: main
+
+argoNamespace: argocd
+destination:
+  server: https://kubernetes.default.svc
+  namespace: mini-platform
+
+applications:
+  argocd:
+    chartPath: charts/argo-cd
+    valuesFile: values/argo-cd-values.yaml
+    namespace: argocd
+    releaseName: argocd
+    wave: "-5"
+  postgresql:
+    chartPath: charts/postgresql
+    valuesFile: values/postgresql-values.yaml
+    wave: "-3"
+  redis:
+    chartPath: charts/redis
+    valuesFile: values/redis-values.yaml
+    wave: "-3"
+  qdrant:
+    chartPath: charts/qdrant
+    valuesFile: values/qdrant-values.yaml
+    wave: "-3"
+  minio:
+    chartPath: charts/minio
+    valuesFile: values/minio-values.yaml
+    wave: "-3"
+  spark-operator:
+    chartPath: charts/spark-operator
+    valuesFile: values/spark-operator-values.yaml
+    wave: "-3"
+  keycloak:
+    chartPath: charts/keycloak
+    valuesFile: values/keycloak-values.yaml
+    wave: "-2"
+  langfuse:
+    chartPath: charts/langfuse
+    valuesFile: values/langfuse-values.yaml
+    wave: "-2"
+  mlflow:
+    chartPath: charts/mlflow
+    valuesFile: values/mlflow-values.yaml
+    wave: "-2"
+  trino:
+    chartPath: charts/trino
+    valuesFile: values/trino-values.yaml
+    wave: "-2"
+  vllm:
+    chartPath: charts/vllm-stack
+    valuesFile: values/vllm-values.yaml
+    wave: "-2"
+  prometheus:
+    chartPath: charts/prometheus
+    valuesFile: values/prometheus-values.yaml
+    wave: "-1"
+  grafana:
+    chartPath: charts/grafana
+    valuesFile: values/grafana-values.yaml
+    wave: "0"
+  jupyterhub:
+    chartPath: charts/jupyterhub
+    valuesFile: values/jupyterhub-values.yaml
+    wave: "0"
+  superset:
+    chartPath: charts/superset
+    valuesFile: values/superset-values.yaml
+    wave: "0"
+  litellm:
+    chartPath: charts/litellm-helm
+    valuesFile: values/litellm-values.yaml
+    wave: "1"
+  open-webui:
+    chartPath: charts/open-webui
+    valuesFile: values/open-webui-values.yaml
+    wave: "2"

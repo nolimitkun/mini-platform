@@ -1,0 +1,63 @@
+langfuse:
+  salt:
+    secretKeyRef:
+      name: langfuse-app-secrets
+      key: salt
+  encryptionKey:
+    secretKeyRef:
+      name: langfuse-app-secrets
+      key: encryption-key
+  nextauth:
+    url: http://localhost:3000
+    secret:
+      secretKeyRef:
+        name: langfuse-app-secrets
+        key: nextauth-secret
+  features:
+    telemetryEnabled: false
+  web:
+    service:
+      type: ClusterIP
+      port: 3000
+  ingress:
+    enabled: false
+
+# Langfuse uses dedicated stores; do not share gateway databases with tracing data.
+postgresql:
+  deploy: true
+  auth:
+    existingSecret: langfuse-postgresql
+    secretKeys:
+      userPasswordKey: password
+      adminPasswordKey: password
+
+redis:
+  deploy: true
+  auth:
+    existingSecret: langfuse-redis
+    existingSecretPasswordKey: password
+
+clickhouse:
+  deploy: true
+  replicaCount: 1
+  resourcesPreset: small
+  auth:
+    existingSecret: langfuse-clickhouse
+    existingSecretKey: password
+
+s3:
+  deploy: true
+  bucket: langfuse
+  accessKeyId:
+    secretKeyRef:
+      name: langfuse-s3
+      key: root-user
+  secretAccessKey:
+    secretKeyRef:
+      name: langfuse-s3
+      key: root-password
+  auth:
+    existingSecret: langfuse-s3
+    rootUserSecretKey: root-user
+    rootPasswordSecretKey: root-password
+
