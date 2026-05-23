@@ -1,6 +1,6 @@
-# Git URL containing this directory, charts/, and values/. Set it when
-# bootstrapping the root Application.
-repoURL: ""
+# Git URL containing this directory, charts/, and values/. Override this when
+# deploying from a fork.
+repoURL: https://github.com/nolimitkun/mini-platform.git
 targetRevision: main
 
 argoNamespace: argocd
@@ -15,6 +15,19 @@ applications:
     namespace: argocd
     releaseName: argocd
     wave: "-5"
+  vault:
+    chartPath: charts/vault
+    valuesFile: values/vault-values.yaml
+    wave: "-4"
+  vault-secrets-operator:
+    chartPath: charts/vault-secrets-operator
+    valuesFile: values/vault-secrets-operator-values.yaml
+    wave: "-4"
+  vault-resources:
+    chartPath: gitops/vault-resources
+    valuesFile: gitops/vault-resources/values.yaml
+    releaseName: vault-resources
+    wave: "-3"
   postgresql:
     chartPath: charts/postgresql
     valuesFile: values/postgresql-values.yaml

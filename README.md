@@ -1,12 +1,35 @@
-# Integrated Mini Platform Deployment
+# Mini Platform
 
-This guide deploys the vendored Helm charts with the overlays under
-[`values/`](values/). The resulting request path is:
+Mini Platform is a Kubernetes reference stack for local LLM inference, LLM
+observability, experiment tracking, and SQL analytics. It vendors Helm charts
+with integration-focused values and uses Argo CD to reconcile the stack from
+Git.
+
+The default AI request path is `Open WebUI -> LiteLLM -> vLLM Router -> vLLM`,
+with LiteLLM emitting request traces to Langfuse. Vault is the source of
+application credentials; Vault Secrets Operator materializes only the
+Kubernetes Secrets required by each Helm release.
+
+## Repository Layout
+
+| Path | Purpose |
+| --- | --- |
+| `charts/` | Vendored upstream Helm charts, including Argo CD, Vault, and Vault Secrets Operator |
+| `values/` | Mini Platform integration overlays without committed credentials |
+| `gitops/mini-platform/` | Argo CD app-of-apps chart for managed releases |
+| `gitops/vault-resources/` | Vault secret synchronization mappings for platform workloads |
+| `gitops/root-application.yaml` | Root Argo CD Application bootstrap manifest |
+| `scripts/bootstrap-vault-secrets.sh` | Writes generated initial credentials to Vault |
+| `text-2-sql/` | Notebook and sample SQL assets for the text-to-SQL use case |
+
+## Architecture
 
 ```text
 Open WebUI -> LiteLLM -> vLLM
                   |
                   +-> Langfuse traces
+
+Vault -> Vault Secrets Operator -> Kubernetes Secrets -> platform workloads
 
 Prometheus -> Grafana
 MLflow     -> experiment and artifact tracking
@@ -17,126 +40,45 @@ Superset       -> Trino -> analytics data sources
 Keycloak       -> identity provider
 MinIO          -> shared object-store endpoint
 
-Argo CD        -> reconciles all Helm releases from Git
+Argo CD        -> reconciles Helm releases and secret mappings from Git
 ```
 
-Langfuse and MLflow each deploy their own stateful dependencies. This avoids
-sharing application databases with the LiteLLM gateway and keeps chart
-upgrades isolated. Superset follows the same pattern for its metadata store
-and cache; Trino is the query endpoint exposed to dashboards.
+Langfuse, MLflow, and Superset deploy isolated stateful dependencies to keep
+their upgrades independent from the LiteLLM gateway. Vault uses persistent
+standalone storage in the starter configuration and must be initialized and
+unsealed before dependent applications become healthy.
 
-## Prerequisites
+## Deployment
+
+Argo CD reconciles the vendored Helm charts using the overlays under
+[`values/`](values/). No application credential is committed to Git.
+
+### Prerequisites
 
 - Kubernetes `1.28` or newer. The current JupyterHub chart requires this.
-- Helm 3 and `kubectl` configured for the target cluster.
-- A Git repository URL reachable by Argo CD. Push this workspace before
-  applying the root application; no Git remote is configured in this checkout.
-- A default StorageClass for PostgreSQL, Qdrant, Grafana, Langfuse, MLflow,
-  and Superset dependency PVCs.
+- Helm 3, `kubectl`, the Vault CLI, and `openssl`.
+- Network access from Argo CD to this repository, or update `repoURL` for a fork.
+- A default StorageClass for platform PVCs, including Vault.
 - An NVIDIA-capable node and device plugin for the default vLLM values. Change
-  [`values/vllm-values.yaml`](values/vllm-values.yaml) for CPU testing or a different model.
+  [`values/vllm-values.yaml`](values/vllm-values.yaml) for CPU testing.
 
 All commands below run from the repository root.
 
-## 1. Namespace And Secrets
-
-The values files contain no committed credentials. Generate secrets locally in
-your shell and create Kubernetes Secrets:
+### 1. Create The Namespace
 
 ```bash
 export NS=mini-platform
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
-
-POSTGRES_ADMIN_PASSWORD="$(openssl rand -base64 32)"
-LITELLM_DB_PASSWORD="$(openssl rand -base64 32)"
-REDIS_PASSWORD="$(openssl rand -base64 32)"
-LITELLM_MASTER_KEY="sk-$(openssl rand -hex 32)"
-
-kubectl -n "$NS" create secret generic postgresql-credentials \
-  --from-literal=postgres-password="$POSTGRES_ADMIN_PASSWORD" \
-  --from-literal=password="$LITELLM_DB_PASSWORD" \
-  --from-literal=metrics-password="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic litellm-dbcredentials \
-  --from-literal=username=litellm \
-  --from-literal=password="$LITELLM_DB_PASSWORD"
-kubectl -n "$NS" create secret generic redis-credentials \
-  --from-literal=redis-password="$REDIS_PASSWORD"
-kubectl -n "$NS" create secret generic litellm-redis \
-  --from-literal=REDIS_HOST=redis-master.mini-platform.svc.cluster.local \
-  --from-literal=REDIS_PORT=6379 \
-  --from-literal=REDIS_PASSWORD="$REDIS_PASSWORD"
-kubectl -n "$NS" create secret generic litellm-master-key \
-  --from-literal=PROXY_MASTER_KEY="$LITELLM_MASTER_KEY"
-
-kubectl -n "$NS" create secret generic langfuse-app-secrets \
-  --from-literal=salt="$(openssl rand -base64 32)" \
-  --from-literal=encryption-key="$(openssl rand -hex 32)" \
-  --from-literal=nextauth-secret="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic langfuse-postgresql \
-  --from-literal=password="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic langfuse-redis \
-  --from-literal=password="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic langfuse-clickhouse \
-  --from-literal=password="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic langfuse-s3 \
-  --from-literal=root-user=langfuse \
-  --from-literal=root-password="$(openssl rand -base64 32)"
-
-kubectl -n "$NS" create secret generic mlflow-auth \
-  --from-literal=admin-user=admin \
-  --from-literal=admin-password="$(openssl rand -base64 32)" \
-  --from-literal=flask-server-secret-key="$(openssl rand -hex 32)"
-kubectl -n "$NS" create secret generic mlflow-postgresql \
-  --from-literal=postgres-password="$(openssl rand -base64 32)" \
-  --from-literal=password="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic mlflow-minio \
-  --from-literal=root-user=mlflow \
-  --from-literal=root-password="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic grafana-admin \
-  --from-literal=admin-user=admin \
-  --from-literal=admin-password="$(openssl rand -base64 32)"
-
-SUPERSET_DB_PASSWORD="$(openssl rand -base64 32)"
-SUPERSET_REDIS_PASSWORD="$(openssl rand -base64 32)"
-SUPERSET_ADMIN_PASSWORD="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic superset-postgresql \
-  --from-literal=postgres-password="$(openssl rand -base64 32)" \
-  --from-literal=password="$SUPERSET_DB_PASSWORD"
-kubectl -n "$NS" create secret generic superset-redis \
-  --from-literal=redis-password="$SUPERSET_REDIS_PASSWORD"
-kubectl -n "$NS" create secret generic superset-env \
-  --from-literal=DB_HOST=superset-postgresql \
-  --from-literal=DB_PORT=5432 \
-  --from-literal=DB_USER=superset \
-  --from-literal=DB_PASS="$SUPERSET_DB_PASSWORD" \
-  --from-literal=DB_NAME=superset \
-  --from-literal=REDIS_HOST=superset-redis-headless \
-  --from-literal=REDIS_PORT=6379 \
-  --from-literal=REDIS_PROTO=redis \
-  --from-literal=REDIS_PASSWORD="$SUPERSET_REDIS_PASSWORD" \
-  --from-literal=REDIS_DB=1 \
-  --from-literal=REDIS_CELERY_DB=0 \
-  --from-literal=SUPERSET_SECRET_KEY="$(openssl rand -base64 42)" \
-  --from-literal=SUPERSET_ADMIN_PASSWORD="$SUPERSET_ADMIN_PASSWORD"
-
-kubectl -n "$NS" create secret generic keycloak-admin \
-  --from-literal=admin-password="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic keycloak-postgresql \
-  --from-literal=postgres-password="$(openssl rand -base64 32)" \
-  --from-literal=password="$(openssl rand -base64 32)"
-kubectl -n "$NS" create secret generic minio-root-credentials \
-  --from-literal=rootUser=mini-platform \
-  --from-literal=rootPassword="$(openssl rand -base64 32)"
 ```
 
-Use an external secret manager or sealed secrets instead of shell-generated
-secrets for a persistent production environment.
+Do not manually create workload credential Secrets. Vault Secrets Operator
+creates them after Vault is configured and populated in step 4.
 
-## 2. Bootstrap Argo CD
+### 2. Bootstrap Argo CD
 
-Argo CD is installed directly with Helm once to bootstrap its controllers.
-After the root application is applied, Argo CD also reconciles its own chart
-configuration from Git along with every platform application release.
+Argo CD is installed directly with Helm once. After the root application is
+applied, Argo CD reconciles its own chart configuration and every platform
+release.
 
 ```bash
 export ARGO_NS=argocd
@@ -149,41 +91,98 @@ kubectl -n "$ARGO_NS" get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 -d
 ```
 
-The UI is available locally at `http://localhost:8080`. The bootstrap values
-use an internal `ClusterIP` service and HTTP behind the port-forward; configure
-ingress, TLS, and identity integration before exposing Argo CD.
+The bootstrap values expose Argo CD only through a local port-forward.
+Configure ingress, TLS, and identity integration before exposing it.
 
-## 3. Commit And Configure The Root Application
+### 3. Apply The Root Application
 
-Commit and push `charts/`, `values/`, and `gitops/` to a repository accessible
-from the cluster. This checkout has no configured Git remote, so the repository
-URL cannot be prefilled.
-
-Edit [`gitops/root-application.yaml`](gitops/root-application.yaml):
-
-1. Replace both `REPLACE_WITH_GIT_REPOSITORY_URL` values with the Git URL.
-2. Set both `targetRevision` values to the branch or revision to reconcile.
-
-Apply the root application:
+[`gitops/root-application.yaml`](gitops/root-application.yaml) points to this
+repository's `main` branch. Update its `repoURL` and `targetRevision` fields
+first when deploying from a fork or release branch.
 
 ```bash
 kubectl apply -f gitops/root-application.yaml
 kubectl -n argocd get applications
 ```
 
-The root application renders [`gitops/mini-platform/`](gitops/mini-platform/)
-and creates an `AppProject` and child applications with automated pruning and
-self-healing enabled.
+Vault and Vault Secrets Operator are created before the dependent chart
+applications. The first reconciliation can show missing-secret failures until
+Vault is initialized and the `VaultStaticSecret` resources synchronize.
 
-## 4. Managed Releases
+### 4. Initialize Vault And Seed Secrets
 
-Argo CD manages every top-level chart in `charts/`. The Argo CD release starts
-as the bootstrap install and is adopted by its child application after the
-root application is synchronized:
+The starter overlay installs one persistent Vault server with HTTP limited to
+cluster networking and port-forward access. Initialize it once and store the
+unseal key and root token outside this repository.
+
+```bash
+umask 077
+kubectl -n "$NS" exec vault-0 -- vault operator init \
+  -key-shares=1 -key-threshold=1 -format=json > "$HOME/.vault-mini-platform-init.json"
+
+export VAULT_UNSEAL_KEY='<unseal-key-from-secure-init-output>'
+export VAULT_TOKEN='<initial-root-token-from-secure-init-output>'
+kubectl -n "$NS" exec vault-0 -- vault operator unseal "$VAULT_UNSEAL_KEY"
+
+kubectl -n "$NS" port-forward svc/vault 8200:8200
+```
+
+In a second terminal, export `VAULT_ADDR` and `VAULT_TOKEN` again, then
+configure the KV store and Kubernetes authentication used by Vault Secrets
+Operator:
+
+```bash
+export VAULT_ADDR=http://127.0.0.1:8200
+export VAULT_TOKEN='<initial-root-token-from-secure-init-output>'
+
+vault secrets enable -path=mini-platform kv-v2
+vault auth enable kubernetes
+vault write auth/kubernetes/config \
+  kubernetes_host=https://kubernetes.default.svc.cluster.local:443
+
+vault policy write mini-platform-read - <<'EOF'
+path "mini-platform/data/*" {
+  capabilities = ["read"]
+}
+path "mini-platform/metadata/*" {
+  capabilities = ["read", "list"]
+}
+EOF
+
+vault write auth/kubernetes/role/mini-platform \
+  bound_service_account_names=vault-auth \
+  bound_service_account_namespaces=mini-platform \
+  audience=vault \
+  policies=mini-platform-read \
+  ttl=1h
+
+vault audit enable file file_path=/vault/audit/audit.log
+./scripts/bootstrap-vault-secrets.sh
+```
+
+Vault Secrets Operator now creates the destination Kubernetes Secrets requested
+by the values overlays. Check synchronization with:
+
+```bash
+kubectl -n "$NS" get vaultstaticsecrets
+kubectl -n "$NS" get secrets
+```
+
+This starter configuration uses manual unseal and disables TLS inside the
+cluster. For a production installation, configure TLS, an auto-unseal
+mechanism, tightly scoped administrative tokens, backups, and an HA storage
+design before storing credentials.
+
+### 5. Managed Releases
+
+Argo CD manages these chart applications and the Vault secret mappings:
 
 | Argo CD application | Chart | Values |
 | --- | --- | --- |
 | `mini-platform-argocd` | `charts/argo-cd` | `values/argo-cd-values.yaml` |
+| `mini-platform-vault` | `charts/vault` | `values/vault-values.yaml` |
+| `mini-platform-vault-secrets-operator` | `charts/vault-secrets-operator` | `values/vault-secrets-operator-values.yaml` |
+| `mini-platform-vault-resources` | `gitops/vault-resources` | `gitops/vault-resources/values.yaml` |
 | `mini-platform-postgresql` | `charts/postgresql` | `values/postgresql-values.yaml` |
 | `mini-platform-redis` | `charts/redis` | `values/redis-values.yaml` |
 | `mini-platform-qdrant` | `charts/qdrant` | `values/qdrant-values.yaml` |
@@ -201,33 +200,29 @@ root application is synchronized:
 | `mini-platform-litellm` | `charts/litellm-helm` | `values/litellm-values.yaml` |
 | `mini-platform-open-webui` | `charts/open-webui` | `values/open-webui-values.yaml` |
 
-The application annotations express intended creation waves for platform
-dependencies. Because each child is independently reconciled, applications
-must also tolerate dependency startup delays.
+### 6. Complete Langfuse Integration
 
-## 5. Complete Langfuse Integration
-
-The first reconciliation deploys Langfuse, but LiteLLM cannot emit traces
-until a Langfuse project key exists. Port-forward Langfuse, create its initial
-project, then provide the required Secret:
+Once Langfuse is running, create its initial project and store the project
+keys in Vault for LiteLLM:
 
 ```bash
 kubectl -n "$NS" port-forward svc/langfuse-web 3000:3000
 
 export LANGFUSE_PUBLIC_KEY='<project-public-key>'
 export LANGFUSE_SECRET_KEY='<project-secret-key>'
-kubectl -n "$NS" create secret generic litellm-langfuse \
-  --from-literal=LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
-  --from-literal=LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
-  --from-literal=LANGFUSE_HOST=http://langfuse-web.mini-platform.svc.cluster.local:3000
+vault kv put mini-platform/litellm-langfuse \
+  LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
+  LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
+  LANGFUSE_HOST=http://langfuse-web.mini-platform.svc.cluster.local:3000
 ```
 
-Argo CD automatically reconciles LiteLLM after its referenced secret is
-available.
+Vault Secrets Operator updates `litellm-langfuse`; Argo CD and Kubernetes then
+converge LiteLLM with Langfuse tracing enabled.
 
-## 6. Access And Verify Services
+### 7. Access And Verify Services
 
 ```bash
+kubectl -n "$NS" port-forward svc/vault-ui 8200:8200
 kubectl -n "$NS" port-forward svc/litellm 4000:4000
 kubectl -n "$NS" port-forward svc/open-webui 8080:80
 kubectl -n "$NS" port-forward svc/mlflow-tracking 5000:80
@@ -243,14 +238,12 @@ kubectl -n "$NS" port-forward svc/keycloak 8082:80
 LiteLLM uses
 `http://vllm-router-service.mini-platform.svc.cluster.local/v1`. Superset
 imports the starter Trino `tpch` catalog connection
-`trino://superset@trino.mini-platform.svc.cluster.local:8080/tpch`. The
-starter Superset overlay installs its Trino driver at startup; publish an
-image with that driver preinstalled for production.
+`trino://superset@trino.mini-platform.svc.cluster.local:8080/tpch`.
 
 This starter configuration leaves Trino unauthenticated on an internal
 `ClusterIP` service. Configure TLS and authentication before exposing it.
 
-Test the LLM gateway:
+Test the LLM gateway after retrieving its Vault-managed Kubernetes Secret:
 
 ```bash
 export LITELLM_MASTER_KEY="$(kubectl -n "$NS" get secret litellm-master-key -o jsonpath='{.data.PROXY_MASTER_KEY}' | base64 -d)"
@@ -263,10 +256,11 @@ curl http://localhost:4000/v1/chat/completions \
 Submit `SparkApplication` resources into `mini-platform` using
 `serviceAccount: spark-operator-spark`.
 
-## Operational Checks
+### Operational Checks
 
 ```bash
 kubectl -n argocd get applications
+kubectl -n "$NS" get vaultstaticsecrets
 kubectl -n "$NS" get pods
 kubectl -n "$NS" get svc
 ```
