@@ -18,6 +18,7 @@ Kubernetes Secrets required by each Helm release.
 | `values/` | Mini Platform integration overlays without committed credentials |
 | `gitops/mini-platform/` | Argo CD app-of-apps chart for managed releases |
 | `gitops/vault-resources/` | Vault secret synchronization mappings for platform workloads |
+| `gitops/ingress-resources/` | Local browser-facing `.test` ingress routes |
 | `gitops/root-application.yaml` | Root Argo CD Application bootstrap manifest |
 | `scripts/bootstrap-vault-secrets.sh` | Writes generated initial credentials to Vault |
 | `text-2-sql/` | Notebook and sample SQL assets for the text-to-SQL use case |
@@ -30,6 +31,9 @@ Open WebUI -> LiteLLM -> vLLM
                   +-> Langfuse traces
 
 Vault -> Vault Secrets Operator -> Kubernetes Secrets -> platform workloads
+
+Ingress NGINX -> Open WebUI, LiteLLM, Langfuse, MLflow, Grafana, JupyterHub,
+                 Superset, MinIO Console, Keycloak, and Argo CD
 
 Prometheus -> Grafana
 MLflow     -> experiment and artifact tracking
@@ -64,6 +68,89 @@ Argo CD reconciles the vendored Helm charts using the overlays under
 
 All commands below run from the repository root.
 
+### Optional: Prepare A Minikube Cluster
+
+Minikube's minimum resources are not sufficient for this multi-service stack.
+For a local evaluation cluster without GPU access, allocate additional CPU,
+memory, and storage:
+
+```bash
+minikube start -p mini-platform \
+  --driver=docker \
+  --kubernetes-version=v1.28.0 \
+  --cpus=8 \
+  --memory=16384 \
+  --disk-size=100g
+```
+
+The default [`values/vllm-values.yaml`](values/vllm-values.yaml) requests an
+NVIDIA GPU. On a host with NVIDIA container runtime support and a compatible
+Minikube driver, use this startup command instead:
+
+```bash
+minikube start -p mini-platform \
+  --driver=docker \
+  --container-runtime=docker \
+  --gpus=nvidia \
+  --kubernetes-version=v1.28.0 \
+  --cpus=8 \
+  --memory=16384 \
+  --disk-size=100g
+```
+
+For a Minikube host without GPU access, adjust the vLLM chart overlay before
+deploying; the checked-in default vLLM release will otherwise remain
+unschedulable.
+
+After starting the selected cluster profile, verify dynamic storage:
+
+```bash
+kubectl config use-context mini-platform
+kubectl get nodes
+kubectl get storageclass
+```
+
+Minikube normally enables a default dynamic storage provisioner. If
+`kubectl get storageclass` does not show a default StorageClass, enable its
+storage addons:
+
+```bash
+minikube addons enable storage-provisioner -p mini-platform
+minikube addons enable default-storageclass -p mini-platform
+kubectl get storageclass
+```
+
+Enable the Minikube ingress controller. The checked-in ingress resources route
+browser-facing services through `.test` hostnames:
+
+```bash
+minikube addons enable ingress -p mini-platform
+kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=120s
+kubectl -n ingress-nginx patch service ingress-nginx-controller \
+  --type merge -p '{"spec":{"type":"LoadBalancer"}}'
+```
+
+With the Docker driver on macOS or Windows, keep one tunnel running for the
+ingress controller instead of one port-forward for every platform service:
+
+```bash
+minikube tunnel -p mini-platform
+```
+
+In another terminal, after the tunnel assigns an external IP, map the local
+development hostnames:
+
+```bash
+export INGRESS_IP="$(kubectl -n ingress-nginx get service ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+printf '%s %s\n' "$INGRESS_IP" \
+  'argocd.test open-webui.test litellm.test langfuse.test mlflow.test grafana.test jupyterhub.test superset.test minio.test keycloak.test' \
+  | sudo tee -a /etc/hosts
+```
+
+On hosts that can reach `minikube ip` directly, Minikube's `ingress-dns` addon
+can be used instead of adding host entries.
+
 ### 1. Create The Namespace
 
 ```bash
@@ -86,13 +173,13 @@ kubectl create namespace "$ARGO_NS" --dry-run=client -o yaml | kubectl apply -f 
 helm upgrade --install argocd charts/argo-cd \
   -n "$ARGO_NS" -f values/argo-cd-values.yaml --wait
 
-kubectl -n "$ARGO_NS" port-forward svc/argocd-server 8080:80
 kubectl -n "$ARGO_NS" get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 -d
 ```
 
-The bootstrap values expose Argo CD only through a local port-forward.
-Configure ingress, TLS, and identity integration before exposing it.
+After preparing Minikube ingress, the Argo CD UI is available at
+`http://argocd.test`. The local route uses HTTP; configure TLS and identity
+integration before exposing it outside a development cluster.
 
 ### 3. Apply The Root Application
 
@@ -199,15 +286,16 @@ Argo CD manages these chart applications and the Vault secret mappings:
 | `mini-platform-superset` | `charts/superset` | `values/superset-values.yaml` |
 | `mini-platform-litellm` | `charts/litellm-helm` | `values/litellm-values.yaml` |
 | `mini-platform-open-webui` | `charts/open-webui` | `values/open-webui-values.yaml` |
+| `mini-platform-ingress-resources` | `gitops/ingress-resources` | `gitops/ingress-resources/values.yaml` |
 
 ### 6. Complete Langfuse Integration
 
 Once Langfuse is running, create its initial project and store the project
 keys in Vault for LiteLLM:
 
-```bash
-kubectl -n "$NS" port-forward svc/langfuse-web 3000:3000
+Open `http://langfuse.test` to create the project, then write its keys:
 
+```bash
 export LANGFUSE_PUBLIC_KEY='<project-public-key>'
 export LANGFUSE_SECRET_KEY='<project-secret-key>'
 vault kv put mini-platform/litellm-langfuse \
@@ -221,18 +309,26 @@ converge LiteLLM with Langfuse tracing enabled.
 
 ### 7. Access And Verify Services
 
+With the Minikube ingress tunnel running, use these local entry points:
+
+| Service | Local endpoint |
+| --- | --- |
+| Argo CD | `http://argocd.test` |
+| Open WebUI | `http://open-webui.test` |
+| LiteLLM API | `http://litellm.test` |
+| Langfuse | `http://langfuse.test` |
+| MLflow | `http://mlflow.test` |
+| Grafana | `http://grafana.test` |
+| JupyterHub | `http://jupyterhub.test` |
+| Superset | `http://superset.test` |
+| MinIO Console | `http://minio.test` |
+| Keycloak | `http://keycloak.test` |
+
+Vault, Prometheus, Trino, databases, and vLLM remain internal by default.
+Use a targeted port-forward for Vault administration during initialization:
+
 ```bash
 kubectl -n "$NS" port-forward svc/vault-ui 8200:8200
-kubectl -n "$NS" port-forward svc/litellm 4000:4000
-kubectl -n "$NS" port-forward svc/open-webui 8080:80
-kubectl -n "$NS" port-forward svc/mlflow-tracking 5000:80
-kubectl -n "$NS" port-forward svc/prometheus-server 9090:80
-kubectl -n "$NS" port-forward svc/grafana 3001:80
-kubectl -n "$NS" port-forward svc/proxy-public 8888:80
-kubectl -n "$NS" port-forward svc/trino 8081:8080
-kubectl -n "$NS" port-forward svc/superset 8088:8088
-kubectl -n "$NS" port-forward svc/minio-console 9001:9001
-kubectl -n "$NS" port-forward svc/keycloak 8082:80
 ```
 
 LiteLLM uses
@@ -247,7 +343,7 @@ Test the LLM gateway after retrieving its Vault-managed Kubernetes Secret:
 
 ```bash
 export LITELLM_MASTER_KEY="$(kubectl -n "$NS" get secret litellm-master-key -o jsonpath='{.data.PROXY_MASTER_KEY}' | base64 -d)"
-curl http://localhost:4000/v1/chat/completions \
+curl http://litellm.test/v1/chat/completions \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{"model":"local-opt125m","messages":[{"role":"user","content":"Say hello in one sentence."}]}'

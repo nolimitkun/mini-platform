@@ -92,3 +92,8 @@ applications:
     chartPath: charts/open-webui
     valuesFile: values/open-webui-values.yaml
     wave: "2"
+  ingress-resources:
+    chartPath: gitops/ingress-resources
+    valuesFile: gitops/ingress-resources/values.yaml
+    releaseName: ingress-resources
+    wave: "3"

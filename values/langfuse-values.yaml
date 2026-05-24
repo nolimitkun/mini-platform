@@ -8,7 +8,7 @@ langfuse:
       name: langfuse-app-secrets
       key: encryption-key
   nextauth:
-    url: http://localhost:3000
+    url: http://langfuse.test
     secret:
       secretKeyRef:
         name: langfuse-app-secrets
@@ -60,4 +60,3 @@ s3:
     existingSecret: langfuse-s3
     rootUserSecretKey: root-user
     rootPasswordSecretKey: root-password
-
