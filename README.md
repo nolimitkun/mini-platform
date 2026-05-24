@@ -21,7 +21,7 @@ Kubernetes Secrets required by each Helm release.
 | `gitops/ingress-resources/` | Local browser-facing `.test` ingress routes |
 | `gitops/root-application.yaml` | Root Argo CD Application bootstrap manifest |
 | `scripts/bootstrap-vault-secrets.sh` | Writes generated initial credentials to Vault |
-| `text-2-sql/` | Notebook and sample SQL assets for the text-to-SQL use case |
+| `tools/` | Optional Kubernetes utility workloads, such as network diagnostics |
 
 ## Architecture
 
@@ -57,11 +57,17 @@ unsealed before dependent applications become healthy.
 Argo CD reconciles the vendored Helm charts using the overlays under
 [`values/`](values/). No application credential is committed to Git.
 
+This is a GitOps deployment: after changing an overlay or a GitOps chart,
+commit and push it to the revision configured in
+[`gitops/root-application.yaml`](gitops/root-application.yaml). Argo CD does
+not read changes that exist only in a local working tree.
+
 ### Prerequisites
 
 - Kubernetes `1.28` or newer. The current JupyterHub chart requires this.
 - Helm 3, `kubectl`, the Vault CLI, and `openssl`.
-- Network access from Argo CD to this repository, or update `repoURL` for a fork.
+- Network access from Argo CD to this repository, or a pushed fork containing
+  any local configuration changes.
 - A default StorageClass for platform PVCs, including Vault.
 - An NVIDIA-capable node and device plugin for the default vLLM values. Change
   [`values/vllm-values.yaml`](values/vllm-values.yaml) for CPU testing.
@@ -184,8 +190,11 @@ integration before exposing it outside a development cluster.
 ### 3. Apply The Root Application
 
 [`gitops/root-application.yaml`](gitops/root-application.yaml) points to this
-repository's `main` branch. Update its `repoURL` and `targetRevision` fields
-first when deploying from a fork or release branch.
+repository's `main` branch. When deploying a fork or another revision, update
+both `spec.source.repoURL` / `spec.source.targetRevision` and the matching
+`spec.source.helm.parameters` values. The first pair tells Argo CD where to
+render the app-of-apps chart; the parameter pair tells that chart where every
+managed application reads its Helm chart and values.
 
 ```bash
 kubectl apply -f gitops/root-application.yaml
@@ -211,7 +220,7 @@ export VAULT_UNSEAL_KEY='<unseal-key-from-secure-init-output>'
 export VAULT_TOKEN='<initial-root-token-from-secure-init-output>'
 kubectl -n "$NS" exec vault-0 -- vault operator unseal "$VAULT_UNSEAL_KEY"
 
-kubectl -n "$NS" port-forward svc/vault 8200:8200
+kubectl -n "$NS" port-forward svc/vault-ui 8200:8200
 ```
 
 In a second terminal, export `VAULT_ADDR` and `VAULT_TOKEN` again, then
@@ -254,6 +263,11 @@ by the values overlays. Check synchronization with:
 kubectl -n "$NS" get vaultstaticsecrets
 kubectl -n "$NS" get secrets
 ```
+
+The bootstrap script writes the base service credentials, but intentionally
+does not write `mini-platform/litellm-langfuse`: those keys exist only after a
+Langfuse project is created in step 6. Until then, the `litellm-langfuse`
+`VaultStaticSecret` and the LiteLLM deployment can remain unready.
 
 This starter configuration uses manual unseal and disables TLS inside the
 cluster. For a production installation, configure TLS, an auto-unseal
@@ -329,6 +343,18 @@ Use a targeted port-forward for Vault administration during initialization:
 
 ```bash
 kubectl -n "$NS" port-forward svc/vault-ui 8200:8200
+```
+
+The bootstrap script generates browser-service credentials in Vault rather
+than printing them. With `VAULT_ADDR` and an authorized `VAULT_TOKEN` set,
+retrieve initial logins as needed:
+
+```bash
+vault kv get -field=admin-password mini-platform/grafana-admin
+vault kv get -field=admin-password mini-platform/mlflow-auth
+vault kv get -field=SUPERSET_ADMIN_PASSWORD mini-platform/superset-env
+vault kv get -field=admin-password mini-platform/keycloak-admin
+vault kv get -field=rootPassword mini-platform/minio-root-credentials
 ```
 
 LiteLLM uses
