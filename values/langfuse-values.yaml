@@ -15,6 +15,26 @@ langfuse:
         key: nextauth-secret
   features:
     telemetryEnabled: false
+  # Provision the tracing project using the same Vault-managed keys consumed by LiteLLM.
+  additionalEnv:
+    - name: LANGFUSE_INIT_ORG_ID
+      value: mini-platform
+    - name: LANGFUSE_INIT_ORG_NAME
+      value: Mini Platform
+    - name: LANGFUSE_INIT_PROJECT_ID
+      value: litellm
+    - name: LANGFUSE_INIT_PROJECT_NAME
+      value: LiteLLM
+    - name: LANGFUSE_INIT_PROJECT_PUBLIC_KEY
+      valueFrom:
+        secretKeyRef:
+          name: litellm-langfuse
+          key: LANGFUSE_PUBLIC_KEY
+    - name: LANGFUSE_INIT_PROJECT_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: litellm-langfuse
+          key: LANGFUSE_SECRET_KEY
   web:
     service:
       type: ClusterIP
@@ -33,7 +53,9 @@ postgresql:
 
 redis:
   deploy: true
+  host: langfuse-redis-primary
   auth:
+    username: null
     existingSecret: langfuse-redis
     existingSecretPasswordKey: password
 

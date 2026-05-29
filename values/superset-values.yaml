@@ -11,7 +11,7 @@ envFromSecret: superset-env
 bootstrapScript: |
   #!/bin/bash
   set -e
-  pip install --no-cache-dir trino
+  pip install --no-cache-dir --target /app/.venv/lib/python3.10/site-packages trino psycopg2-binary
   if [ ! -f ~/bootstrap ]; then echo "Running Superset with uid {{ .Values.runAsUser }}" > ~/bootstrap; fi
 
 configOverrides:

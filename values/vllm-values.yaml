@@ -5,6 +5,15 @@ servingEngineSpec:
       repository: vllm/vllm-openai
       tag: latest
       modelURL: facebook/opt-125m
+      chatTemplate: chat.jinja2
+      chatTemplateConfigMap: |-
+        {% for message in messages %}
+        {% if message['role'] == 'system' %}System: {{ message['content'] }}
+        {% elif message['role'] == 'user' %}User: {{ message['content'] }}
+        {% elif message['role'] == 'assistant' %}Assistant: {{ message['content'] }}
+        {% endif %}
+        {% endfor %}
+        {% if add_generation_prompt %}Assistant: {% endif %}
       replicaCount: 1
       requestCPU: 1
       requestMemory: 2Gi
@@ -24,4 +33,3 @@ routerSpec:
   sessionKey: x-user-id
   serviceMonitor:
     enabled: false
-

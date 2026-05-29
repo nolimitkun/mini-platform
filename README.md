@@ -20,7 +20,9 @@ Kubernetes Secrets required by each Helm release.
 | `gitops/vault-resources/` | Vault secret synchronization mappings for platform workloads |
 | `gitops/ingress-resources/` | Local browser-facing `.test` ingress routes |
 | `gitops/root-application.yaml` | Root Argo CD Application bootstrap manifest |
+| `scripts/deploy-minikube.sh` | Creates or resets Minikube and automates Argo/Vault bootstrap |
 | `scripts/bootstrap-vault-secrets.sh` | Writes generated initial credentials to Vault |
+| `scripts/port-forward-services.sh` | Starts host-local browser service port forwards |
 | `tools/` | Optional Kubernetes utility workloads, such as network diagnostics |
 
 ## Architecture
@@ -65,7 +67,8 @@ not read changes that exist only in a local working tree.
 ### Prerequisites
 
 - Kubernetes `1.28` or newer. The current JupyterHub chart requires this.
-- Helm 3, `kubectl`, the Vault CLI, and `openssl`.
+- Helm 3, `kubectl`, `git`, `jq`, and `openssl` for the automated Minikube
+  workflow. The manual Vault steps additionally require the Vault CLI.
 - Network access from Argo CD to this repository, or a pushed fork containing
   any local configuration changes.
 - A default StorageClass for platform PVCs, including Vault.
@@ -73,6 +76,83 @@ not read changes that exist only in a local working tree.
   [`values/vllm-values.yaml`](values/vllm-values.yaml) for CPU testing.
 
 All commands below run from the repository root.
+
+### Recommended: Automated Minikube Deployment
+
+For a GPU-enabled Minikube host with a pushed Git repository available to
+Argo CD, run:
+
+```bash
+./scripts/deploy-minikube.sh \
+  --repo-url https://github.com/<owner>/mini-platform.git \
+  --revision main
+```
+
+To clean an existing `mini-platform` profile and rebuild it from the
+beginning, add `--reset`. The script backs up any existing Vault
+initialization JSON before deleting the profile.
+
+```bash
+./scripts/deploy-minikube.sh --reset \
+  --repo-url https://github.com/<owner>/mini-platform.git \
+  --revision main
+```
+
+When the checkout exists only on the Minikube host, or the remote repository
+is private and no Argo CD credential has been configured, deploy through a
+private cluster-internal Git source:
+
+```bash
+git status --short
+# Commit the configuration intended for deployment before continuing.
+./scripts/deploy-minikube.sh --reset --local-source
+```
+
+`--local-source` rejects staged, modified, or untracked files because Argo CD
+reconciles Git commits. It creates a persistent `gitops-source/git-source`
+service reachable only within the cluster and pins Argo CD to the current
+commit. Re-run the command after committing a later configuration update to
+refresh that source.
+
+The deployment script:
+
+- creates or starts the `mini-platform` Minikube profile with NVIDIA GPU
+  passthrough by default;
+- enables dynamic storage and ingress;
+- installs Argo CD and configures the root Application source;
+- initializes and unseals Vault, retaining recovery material at
+  `~/.vault-mini-platform-init.json`;
+- configures Kubernetes authentication and seeds initial credentials; and
+- waits for Vault Secrets Operator synchronization.
+
+On a Linux host using rootless Docker, the script warns when user lingering is
+disabled; it does not change that system setting automatically.
+
+Use `--no-gpu` only with a corresponding CPU-capable vLLM overlay. Re-running
+an initialized deployment keeps existing service credentials; pass
+`--rotate-secrets` only when credential replacement is intended.
+
+To expose the browser services directly on the Minikube host:
+
+```bash
+./scripts/port-forward-services.sh
+```
+
+For a remote host, forward the printed host ports over SSH, for example:
+
+```bash
+ssh -N \
+  -L 3000:127.0.0.1:3000 \
+  -L 3001:127.0.0.1:3001 \
+  -L 4000:127.0.0.1:4000 \
+  user@minikube-host
+```
+
+If Minikube uses rootless Docker on a remote Linux host, ensure the user's
+Docker service is configured to remain running without an active login
+session. Otherwise the cluster may stop when the SSH session exits.
+
+### Manual Deployment Steps
 
 ### Optional: Prepare A Minikube Cluster
 
@@ -264,10 +344,11 @@ kubectl -n "$NS" get vaultstaticsecrets
 kubectl -n "$NS" get secrets
 ```
 
-The bootstrap script writes the base service credentials, but intentionally
-does not write `mini-platform/litellm-langfuse`: those keys exist only after a
-Langfuse project is created in step 6. Until then, the `litellm-langfuse`
-`VaultStaticSecret` and the LiteLLM deployment can remain unready.
+The bootstrap script writes project API keys to
+`mini-platform/litellm-langfuse`. Langfuse uses its headless initialization
+environment variables to create the starter organization and project with
+those keys, while LiteLLM consumes the same Vault-managed secret. No browser
+setup is required before LiteLLM becomes ready.
 
 This starter configuration uses manual unseal and disables TLS inside the
 cluster. For a production installation, configure TLS, an auto-unseal
@@ -302,24 +383,19 @@ Argo CD manages these chart applications and the Vault secret mappings:
 | `mini-platform-open-webui` | `charts/open-webui` | `values/open-webui-values.yaml` |
 | `mini-platform-ingress-resources` | `gitops/ingress-resources` | `gitops/ingress-resources/values.yaml` |
 
-### 6. Complete Langfuse Integration
+### 6. Verify Langfuse Integration
 
-Once Langfuse is running, create its initial project and store the project
-keys in Vault for LiteLLM:
+Langfuse automatically creates the `mini-platform` organization and `litellm`
+project from the Vault-managed project keys written in step 4. Vault Secrets
+Operator exposes those same keys to LiteLLM for tracing.
 
-Open `http://langfuse.test` to create the project, then write its keys:
+Verify that the secret synchronized and both applications are healthy:
 
 ```bash
-export LANGFUSE_PUBLIC_KEY='<project-public-key>'
-export LANGFUSE_SECRET_KEY='<project-secret-key>'
-vault kv put mini-platform/litellm-langfuse \
-  LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
-  LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
-  LANGFUSE_HOST=http://langfuse-web.mini-platform.svc.cluster.local:3000
+kubectl -n "$NS" get vaultstaticsecret litellm-langfuse
+kubectl -n "$NS" get pods -l app.kubernetes.io/instance=langfuse
+kubectl -n "$NS" get pods -l app.kubernetes.io/name=litellm
 ```
-
-Vault Secrets Operator updates `litellm-langfuse`; Argo CD and Kubernetes then
-converge LiteLLM with Langfuse tracing enabled.
 
 ### 7. Access And Verify Services
 

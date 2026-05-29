@@ -1,9 +1,12 @@
 nameOverride: litellm
 
+image:
+  tag: main-latest
+
 masterkeySecretName: litellm-master-key
 masterkeySecretKey: PROXY_MASTER_KEY
 
-# Add Langfuse project keys after creating a project in the Langfuse UI.
+# Langfuse headless initialization and LiteLLM use the same Vault-managed project keys.
 environmentSecrets:
   - litellm-langfuse
   - litellm-redis

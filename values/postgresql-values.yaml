@@ -9,6 +9,8 @@ auth:
 
 architecture: standalone
 
-metrics:
+volumePermissions:
   enabled: true
 
+metrics:
+  enabled: true
