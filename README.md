@@ -132,21 +132,37 @@ Use `--no-gpu` only with a corresponding CPU-capable vLLM overlay. Re-running
 an initialized deployment keeps existing service credentials; pass
 `--rotate-secrets` only when credential replacement is intended.
 
-To expose the browser services directly on the Minikube host:
+Service exposure has two supported modes:
+
+- `ingress`: hostname-based access through the Minikube ingress controller.
+- `port-forward`: direct service ports from the host that runs the stack.
+
+In port-forward mode, run the script on the host that runs Minikube and the
+platform services. The script no longer starts remote forwards over SSH.
+
+For host-local browser access on `127.0.0.1`:
 
 ```bash
 ./scripts/port-forward-services.sh
 ```
 
-For a remote host, forward the printed host ports over SSH, for example:
+For LAN access from other machines on a trusted network, listen on all host
+interfaces and print the host's detected LAN IP:
 
 ```bash
-ssh -N \
-  -L 3000:127.0.0.1:3000 \
-  -L 3001:127.0.0.1:3001 \
-  -L 4000:127.0.0.1:4000 \
-  user@minikube-host
+./scripts/port-forward-services.sh --mode lan
 ```
+
+If automatic LAN IP detection does not select the right interface, pass the
+LAN IP to print in the service URLs:
+
+```bash
+./scripts/port-forward-services.sh restart --mode lan --address 192.168.1.54
+```
+
+This makes services reachable from the LAN at endpoints such as
+`http://192.168.1.54:8080`. Stop the processes with
+`./scripts/port-forward-services.sh stop`.
 
 If Minikube uses rootless Docker on a remote Linux host, ensure the user's
 Docker service is configured to remain running without an active login
