@@ -1,86 +1,105 @@
 # Mini Platform
 
-Mini Platform is a Kubernetes reference stack for local LLM inference, LLM
-observability, experiment tracking, and SQL analytics. It vendors Helm charts
-with integration-focused values and uses Argo CD to reconcile the stack from
-Git.
+Mini Platform is a self-contained Kubernetes reference stack for local LLM
+inference, LLM observability, experiment tracking, and SQL analytics. It vendors
+upstream Helm charts under [`charts/`](charts/), layers integration-focused
+overlays on top of them in [`values/`](values/), and uses **Argo CD** to
+reconcile the whole stack from Git.
 
-The default AI request path is `Open WebUI -> LiteLLM -> vLLM Router -> vLLM`,
-with LiteLLM emitting request traces to Langfuse. Vault is the source of
-application credentials; Vault Secrets Operator materializes only the
-Kubernetes Secrets required by each Helm release.
+Two principles shape the design:
+
+- **GitOps.** Argo CD is the only thing that deploys workloads. After you change
+  an overlay or GitOps chart, commit and push it — Argo CD does not read a local
+  working tree.
+- **No credentials in Git.** **Vault** is the source of truth for application
+  credentials, and **Vault Secrets Operator (VSO)** materializes only the
+  Kubernetes Secrets each release needs.
+
+## Architecture
+
+The default AI request path is:
+
+```text
+Open WebUI ──▶ LiteLLM ──▶ vLLM Router ──▶ vLLM
+                  │
+                  └──▶ Langfuse (request traces)
+```
+
+Open WebUI talks to LiteLLM as an OpenAI-compatible gateway; LiteLLM routes the
+`local-opt125m` model to the vLLM router serving `facebook/opt-125m`, and emits
+traces to Langfuse using project keys it shares with Langfuse through Vault.
+
+Supporting subsystems:
+
+```text
+Vault ──▶ Vault Secrets Operator ──▶ Kubernetes Secrets ──▶ workloads
+
+Ingress NGINX ──▶ Open WebUI, LiteLLM, Langfuse, MLflow, Grafana,
+                  JupyterHub, Superset, MinIO Console, Keycloak, Argo CD
+
+Prometheus     ──▶ Grafana            (metrics + dashboards)
+MLflow                                (experiment + artifact tracking)
+Qdrant                                (vector store for notebook/RAG examples)
+Spark Operator ──▶ Spark batch jobs
+Superset       ──▶ Trino ──▶ analytics sources
+Keycloak                              (identity provider)
+MinIO                                 (shared S3-compatible object store)
+Argo CD        ──▶ reconciles every release + secret mapping from Git
+```
+
+Langfuse, MLflow, and Superset each deploy their own isolated stateful
+dependencies so their upgrades stay independent of the LiteLLM gateway. Vault
+runs as a single persistent standalone server in this starter configuration and
+**must be initialized and unsealed before dependent applications turn healthy.**
 
 ## Repository Layout
 
 | Path | Purpose |
 | --- | --- |
-| `charts/` | Vendored upstream Helm charts, including Argo CD, Vault, and Vault Secrets Operator |
-| `values/` | Mini Platform integration overlays without committed credentials |
-| `gitops/mini-platform/` | Argo CD app-of-apps chart for managed releases |
-| `gitops/vault-resources/` | Vault secret synchronization mappings for platform workloads |
-| `gitops/ingress-resources/` | Local browser-facing `.test` ingress routes |
-| `gitops/root-application.yaml` | Root Argo CD Application bootstrap manifest |
-| `scripts/deploy-minikube.sh` | Creates or resets Minikube and automates Argo/Vault bootstrap |
-| `scripts/bootstrap-vault-secrets.sh` | Writes generated initial credentials to Vault |
-| `scripts/port-forward-services.sh` | Starts host-local browser service port forwards |
-| `tools/` | Optional Kubernetes utility workloads, such as network diagnostics |
-
-## Architecture
-
-```text
-Open WebUI -> LiteLLM -> vLLM
-                  |
-                  +-> Langfuse traces
-
-Vault -> Vault Secrets Operator -> Kubernetes Secrets -> platform workloads
-
-Ingress NGINX -> Open WebUI, LiteLLM, Langfuse, MLflow, Grafana, JupyterHub,
-                 Superset, MinIO Console, Keycloak, and Argo CD
-
-Prometheus -> Grafana
-MLflow     -> experiment and artifact tracking
-Qdrant     -> vector storage for notebook/RAG examples
-
-Spark Operator -> Spark batch workloads
-Superset       -> Trino -> analytics data sources
-Keycloak       -> identity provider
-MinIO          -> shared object-store endpoint
-
-Argo CD        -> reconciles Helm releases and secret mappings from Git
-```
-
-Langfuse, MLflow, and Superset deploy isolated stateful dependencies to keep
-their upgrades independent from the LiteLLM gateway. Vault uses persistent
-standalone storage in the starter configuration and must be initialized and
-unsealed before dependent applications become healthy.
+| `charts/` | Vendored upstream Helm charts (Argo CD, Vault, VSO, and every platform component) |
+| `values/` | Mini Platform integration overlays — no committed credentials |
+| `gitops/mini-platform/` | Argo CD app-of-apps chart defining every managed release and its sync wave |
+| `gitops/vault-resources/` | `VaultStaticSecret` mappings and the VSO auth service account |
+| `gitops/ingress-resources/` | Browser-facing `.test` ingress routes |
+| `gitops/root-application.yaml` | Root Argo CD Application that bootstraps the app-of-apps |
+| `scripts/deploy-minikube.sh` | Creates/resets Minikube and automates the Argo CD + Vault bootstrap |
+| `scripts/bootstrap-vault-secrets.sh` | Generates and writes initial credentials into Vault |
+| `scripts/port-forward-services.sh` | Host-local or LAN port forwards for browser services |
+| `scripts/set-repo.sh` | Repoints the GitOps config (repoURL/revision) at a fork in one command |
+| `scripts/validate-gitops.sh` | Lints/renders the GitOps charts and shellchecks the scripts; run in CI too |
+| `tools/` | Optional utility workloads (e.g. network diagnostics) |
 
 ## Deployment
 
-Argo CD reconciles the vendored Helm charts using the overlays under
-[`values/`](values/). No application credential is committed to Git.
+All commands run from the repository root.
 
-This is a GitOps deployment: after changing an overlay or a GitOps chart,
-commit and push it to the revision configured in
-[`gitops/root-application.yaml`](gitops/root-application.yaml). Argo CD does
-not read changes that exist only in a local working tree.
+> **GitOps reminder.** The stack reconciles from a specific `repoURL` and
+> `targetRevision`. When deploying a fork or a different branch, repoint every
+> reference in one step, then commit and push before syncing:
+>
+> ```bash
+> ./scripts/set-repo.sh --repo-url https://github.com/<owner>/mini-platform.git --revision main
+> ```
+>
+> This rewrites [`gitops/root-application.yaml`](gitops/root-application.yaml),
+> [`gitops/mini-platform/values.yaml`](gitops/mini-platform/values.yaml), and the
+> `scripts/deploy-minikube.sh` defaults so they stay in sync.
 
 ### Prerequisites
 
-- Kubernetes `1.28` or newer. The current JupyterHub chart requires this.
-- Helm 3, `kubectl`, `git`, `jq`, and `openssl` for the automated Minikube
-  workflow. The manual Vault steps additionally require the Vault CLI.
-- Network access from Argo CD to this repository, or a pushed fork containing
-  any local configuration changes.
-- A default StorageClass for platform PVCs, including Vault.
-- An NVIDIA-capable node and device plugin for the default vLLM values. Change
-  [`values/vllm-values.yaml`](values/vllm-values.yaml) for CPU testing.
-
-All commands below run from the repository root.
+- Kubernetes `1.28` or newer (required by the current JupyterHub chart).
+- `helm` 3, `kubectl`, `git`, `jq`, and `openssl` for the automated workflow.
+  The manual Vault steps additionally need the Vault CLI.
+- Network access from Argo CD to this repository (or to a pushed fork carrying
+  your changes).
+- A default `StorageClass` for platform PVCs, including Vault.
+- An NVIDIA-capable node and device plugin for the default vLLM values. Edit
+  [`values/vllm-values.yaml`](values/vllm-values.yaml) for CPU-only testing.
 
 ### Recommended: Automated Minikube Deployment
 
-For a GPU-enabled Minikube host with a pushed Git repository available to
-Argo CD, run:
+On a GPU-enabled Minikube host, with the repository pushed somewhere Argo CD can
+reach:
 
 ```bash
 ./scripts/deploy-minikube.sh \
@@ -88,142 +107,86 @@ Argo CD, run:
   --revision main
 ```
 
-To clean an existing `mini-platform` profile and rebuild it from the
-beginning, add `--reset`. The script backs up any existing Vault
-initialization JSON before deleting the profile.
+The script:
 
-```bash
-./scripts/deploy-minikube.sh --reset \
-  --repo-url https://github.com/<owner>/mini-platform.git \
-  --revision main
-```
-
-When the checkout exists only on the Minikube host, or the remote repository
-is private and no Argo CD credential has been configured, deploy through a
-private cluster-internal Git source:
-
-```bash
-git status --short
-# Commit the configuration intended for deployment before continuing.
-./scripts/deploy-minikube.sh --reset --local-source
-```
-
-`--local-source` rejects staged, modified, or untracked files because Argo CD
-reconciles Git commits. It creates a persistent `gitops-source/git-source`
-service reachable only within the cluster and pins Argo CD to the current
-commit. Re-run the command after committing a later configuration update to
-refresh that source.
-
-The deployment script:
-
-- creates or starts the `mini-platform` Minikube profile with NVIDIA GPU
-  passthrough by default;
-- enables dynamic storage and ingress;
+- creates/starts the `mini-platform` Minikube profile with NVIDIA GPU
+  passthrough by default, and enables the storage and ingress addons;
 - installs Argo CD and configures the root Application source;
 - initializes and unseals Vault, retaining recovery material at
   `~/.vault-mini-platform-init.json`;
-- configures Kubernetes authentication and seeds initial credentials; and
-- waits for Vault Secrets Operator synchronization.
+- configures Kubernetes auth and seeds initial credentials; and
+- waits for VSO secret synchronization and platform pods to become ready.
 
-On a Linux host using rootless Docker, the script warns when user lingering is
-disabled; it does not change that system setting automatically.
+Useful flags:
 
-Use `--no-gpu` only with a corresponding CPU-capable vLLM overlay. Re-running
-an initialized deployment keeps existing service credentials; pass
-`--rotate-secrets` only when credential replacement is intended.
+| Flag | Effect |
+| --- | --- |
+| `--reset` | Delete and recreate the profile first (backs up any existing Vault init JSON) |
+| `--local-source` | Serve this committed checkout through a cluster-only Git service instead of a remote |
+| `--no-gpu` | Start without GPU passthrough (use only with a CPU-capable vLLM overlay) |
+| `--rotate-secrets` | Rewrite Vault credentials on an already-initialized Vault |
+| `--skip-image-preload` | Skip loading host-cached images into Minikube |
+| `--skip-workload-wait` | Return after secret sync instead of waiting for pods |
 
-Service exposure has two supported modes:
+Re-running an initialized deployment keeps existing credentials; pass
+`--rotate-secrets` only when you intend to replace them.
 
-- `ingress`: hostname-based access through the Minikube ingress controller.
-- `port-forward`: direct service ports from the host that runs the stack.
-
-In port-forward mode, run the script on the host that runs Minikube and the
-platform services. The script no longer starts remote forwards over SSH.
-
-For host-local browser access on `127.0.0.1`:
-
-```bash
-./scripts/port-forward-services.sh
-```
-
-For LAN access from other machines on a trusted network, listen on all host
-interfaces and print the host's detected LAN IP:
+**Deploying from a local checkout.** When the repository lives only on the
+Minikube host, or it is private and Argo CD has no credential, use
+`--local-source`:
 
 ```bash
-./scripts/port-forward-services.sh --mode lan
+git status --short   # must be clean — Argo CD reconciles commits, not the working tree
+./scripts/deploy-minikube.sh --reset --local-source
 ```
 
-If automatic LAN IP detection does not select the right interface, pass the
-LAN IP to print in the service URLs:
+This creates a persistent, cluster-internal `gitops-source/git-source` service
+and pins Argo CD to the current commit. Re-run it after committing later
+changes to refresh the source.
 
-```bash
-./scripts/port-forward-services.sh restart --mode lan --address 192.168.1.54
-```
-
-This makes services reachable from the LAN at endpoints such as
-`http://192.168.1.54:8080`. Stop the processes with
-`./scripts/port-forward-services.sh stop`.
-
-If Minikube uses rootless Docker on a remote Linux host, ensure the user's
-Docker service is configured to remain running without an active login
-session. Otherwise the cluster may stop when the SSH session exits.
+**Rootless Docker on Linux.** If Minikube uses rootless Docker on a remote host,
+ensure the user's Docker service keeps running without an active login (user
+lingering). Otherwise the cluster stops when the SSH session exits — the script
+warns about this but does not change the setting for you.
 
 ### Manual Deployment Steps
 
-### Optional: Prepare A Minikube Cluster
+#### Optional: Prepare a Minikube cluster
 
-Minikube's minimum resources are not sufficient for this multi-service stack.
-For a local evaluation cluster without GPU access, allocate additional CPU,
-memory, and storage:
+Minikube's defaults are too small for this stack. For a CPU-only evaluation
+cluster:
 
 ```bash
 minikube start -p mini-platform \
   --driver=docker \
   --kubernetes-version=v1.28.0 \
-  --cpus=8 \
-  --memory=16384 \
-  --disk-size=100g
+  --cpus=8 --memory=16384 --disk-size=100g
 ```
 
 The default [`values/vllm-values.yaml`](values/vllm-values.yaml) requests an
-NVIDIA GPU. On a host with NVIDIA container runtime support and a compatible
-Minikube driver, use this startup command instead:
+NVIDIA GPU. On a host with NVIDIA container runtime support, start with GPU
+passthrough instead:
 
 ```bash
 minikube start -p mini-platform \
-  --driver=docker \
-  --container-runtime=docker \
-  --gpus=nvidia \
+  --driver=docker --container-runtime=docker --gpus=nvidia \
   --kubernetes-version=v1.28.0 \
-  --cpus=8 \
-  --memory=16384 \
-  --disk-size=100g
+  --cpus=8 --memory=16384 --disk-size=100g
 ```
 
-For a Minikube host without GPU access, adjust the vLLM chart overlay before
-deploying; the checked-in default vLLM release will otherwise remain
-unschedulable.
-
-After starting the selected cluster profile, verify dynamic storage:
+Without GPU access, adjust the vLLM overlay before deploying or its pod stays
+unschedulable. Then confirm a default StorageClass exists:
 
 ```bash
 kubectl config use-context mini-platform
 kubectl get nodes
 kubectl get storageclass
-```
-
-Minikube normally enables a default dynamic storage provisioner. If
-`kubectl get storageclass` does not show a default StorageClass, enable its
-storage addons:
-
-```bash
+# If no default is shown:
 minikube addons enable storage-provisioner -p mini-platform
 minikube addons enable default-storageclass -p mini-platform
-kubectl get storageclass
 ```
 
-Enable the Minikube ingress controller. The checked-in ingress resources route
-browser-facing services through `.test` hostnames:
+Enable the ingress controller (the checked-in routes use `.test` hostnames):
 
 ```bash
 minikube addons enable ingress -p mini-platform
@@ -233,14 +196,13 @@ kubectl -n ingress-nginx patch service ingress-nginx-controller \
 ```
 
 With the Docker driver on macOS or Windows, keep one tunnel running for the
-ingress controller instead of one port-forward for every platform service:
+ingress controller rather than a port-forward per service:
 
 ```bash
 minikube tunnel -p mini-platform
 ```
 
-In another terminal, after the tunnel assigns an external IP, map the local
-development hostnames:
+Once the tunnel assigns an external IP, map the local hostnames:
 
 ```bash
 export INGRESS_IP="$(kubectl -n ingress-nginx get service ingress-nginx-controller \
@@ -250,24 +212,23 @@ printf '%s %s\n' "$INGRESS_IP" \
   | sudo tee -a /etc/hosts
 ```
 
-On hosts that can reach `minikube ip` directly, Minikube's `ingress-dns` addon
-can be used instead of adding host entries.
+On hosts that can reach `minikube ip` directly, the `ingress-dns` addon is an
+alternative to editing `/etc/hosts`.
 
-### 1. Create The Namespace
+#### 1. Create the namespace
 
 ```bash
 export NS=mini-platform
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Do not manually create workload credential Secrets. Vault Secrets Operator
-creates them after Vault is configured and populated in step 4.
+Do **not** create workload credential Secrets by hand — VSO creates them after
+Vault is configured in step 4.
 
-### 2. Bootstrap Argo CD
+#### 2. Bootstrap Argo CD
 
-Argo CD is installed directly with Helm once. After the root application is
-applied, Argo CD reconciles its own chart configuration and every platform
-release.
+Argo CD is installed once with Helm; afterward it reconciles its own chart and
+every platform release.
 
 ```bash
 export ARGO_NS=argocd
@@ -279,53 +240,54 @@ kubectl -n "$ARGO_NS" get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 -d
 ```
 
-After preparing Minikube ingress, the Argo CD UI is available at
-`http://argocd.test`. The local route uses HTTP; configure TLS and identity
-integration before exposing it outside a development cluster.
+With ingress prepared, the Argo CD UI is at `http://argocd.test`. The local
+route is plain HTTP; configure TLS and identity integration before exposing it
+beyond a development cluster.
 
-### 3. Apply The Root Application
+#### 3. Apply the root Application
 
-[`gitops/root-application.yaml`](gitops/root-application.yaml) points to this
-repository's `main` branch. When deploying a fork or another revision, update
-both `spec.source.repoURL` / `spec.source.targetRevision` and the matching
-`spec.source.helm.parameters` values. The first pair tells Argo CD where to
-render the app-of-apps chart; the parameter pair tells that chart where every
-managed application reads its Helm chart and values.
+[`gitops/root-application.yaml`](gitops/root-application.yaml) renders the
+app-of-apps chart, which in turn creates one Argo CD Application per release.
+When deploying a fork or other revision, run `scripts/set-repo.sh` (above) so
+both `spec.source.repoURL` / `spec.source.targetRevision` **and** the matching
+`spec.source.helm.parameters` are updated together — the first pair tells Argo CD
+where to find the app-of-apps chart; the parameters tell that chart where every
+managed app reads its chart and values.
 
 ```bash
 kubectl apply -f gitops/root-application.yaml
 kubectl -n argocd get applications
 ```
 
-Vault and Vault Secrets Operator are created before the dependent chart
-applications. The first reconciliation can show missing-secret failures until
-Vault is initialized and the `VaultStaticSecret` resources synchronize.
+Sync waves order the rollout: Argo CD and Vault/VSO come first, then secret
+mappings and stateful dependencies, then the application tier, and finally
+LiteLLM, Open WebUI, and ingress. Early reconciliations may show
+missing-secret failures until Vault is initialized in step 4 and the
+`VaultStaticSecret` resources synchronize.
 
-### 4. Initialize Vault And Seed Secrets
+#### 4. Initialize Vault and seed secrets
 
-The starter overlay installs one persistent Vault server with HTTP limited to
-cluster networking and port-forward access. Initialize it once and store the
-unseal key and root token outside this repository.
+The starter overlay installs one persistent Vault server reachable only over
+cluster networking and port-forward. Initialize it once and store the unseal key
+and root token **outside this repository**.
 
 ```bash
 umask 077
 kubectl -n "$NS" exec vault-0 -- vault operator init \
   -key-shares=1 -key-threshold=1 -format=json > "$HOME/.vault-mini-platform-init.json"
 
-export VAULT_UNSEAL_KEY='<unseal-key-from-secure-init-output>'
-export VAULT_TOKEN='<initial-root-token-from-secure-init-output>'
+export VAULT_UNSEAL_KEY='<unseal-key-from-init-output>'
 kubectl -n "$NS" exec vault-0 -- vault operator unseal "$VAULT_UNSEAL_KEY"
 
 kubectl -n "$NS" port-forward svc/vault-ui 8200:8200
 ```
 
-In a second terminal, export `VAULT_ADDR` and `VAULT_TOKEN` again, then
-configure the KV store and Kubernetes authentication used by Vault Secrets
-Operator:
+In a second terminal, configure the KV store and Kubernetes auth that VSO uses,
+then seed credentials:
 
 ```bash
 export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN='<initial-root-token-from-secure-init-output>'
+export VAULT_TOKEN='<initial-root-token-from-init-output>'
 
 vault secrets enable -path=mini-platform kv-v2
 vault auth enable kubernetes
@@ -352,28 +314,28 @@ vault audit enable file file_path=/vault/audit/audit.log
 ./scripts/bootstrap-vault-secrets.sh
 ```
 
-Vault Secrets Operator now creates the destination Kubernetes Secrets requested
-by the values overlays. Check synchronization with:
+`bootstrap-vault-secrets.sh` generates random credentials for every component
+and writes them under `mini-platform/`. Notably, it writes shared Langfuse
+project keys to `mini-platform/litellm-langfuse`: Langfuse's headless init
+provisions the starter organization and project from those keys, and LiteLLM
+consumes the same Vault-managed secret for tracing — no browser setup is needed
+before LiteLLM is ready.
+
+VSO then creates the destination Kubernetes Secrets. Check synchronization:
 
 ```bash
 kubectl -n "$NS" get vaultstaticsecrets
 kubectl -n "$NS" get secrets
 ```
 
-The bootstrap script writes project API keys to
-`mini-platform/litellm-langfuse`. Langfuse uses its headless initialization
-environment variables to create the starter organization and project with
-those keys, while LiteLLM consumes the same Vault-managed secret. No browser
-setup is required before LiteLLM becomes ready.
+> This starter configuration uses manual unseal and disables in-cluster TLS. For
+> production, configure TLS, auto-unseal, tightly scoped tokens, backups, and an
+> HA storage backend before storing real credentials.
 
-This starter configuration uses manual unseal and disables TLS inside the
-cluster. For a production installation, configure TLS, an auto-unseal
-mechanism, tightly scoped administrative tokens, backups, and an HA storage
-design before storing credentials.
+#### 5. Managed releases
 
-### 5. Managed Releases
-
-Argo CD manages these chart applications and the Vault secret mappings:
+The app-of-apps reconciles these applications (and the `vault-resources` and
+`ingress-resources` GitOps charts):
 
 | Argo CD application | Chart | Values |
 | --- | --- | --- |
@@ -399,25 +361,13 @@ Argo CD manages these chart applications and the Vault secret mappings:
 | `mini-platform-open-webui` | `charts/open-webui` | `values/open-webui-values.yaml` |
 | `mini-platform-ingress-resources` | `gitops/ingress-resources` | `gitops/ingress-resources/values.yaml` |
 
-### 6. Verify Langfuse Integration
+## Accessing Services
 
-Langfuse automatically creates the `mini-platform` organization and `litellm`
-project from the Vault-managed project keys written in step 4. Vault Secrets
-Operator exposes those same keys to LiteLLM for tracing.
+### Via ingress
 
-Verify that the secret synchronized and both applications are healthy:
+With ingress (and the Minikube tunnel, where applicable) running:
 
-```bash
-kubectl -n "$NS" get vaultstaticsecret litellm-langfuse
-kubectl -n "$NS" get pods -l app.kubernetes.io/instance=langfuse
-kubectl -n "$NS" get pods -l app.kubernetes.io/name=litellm
-```
-
-### 7. Access And Verify Services
-
-With the Minikube ingress tunnel running, use these local entry points:
-
-| Service | Local endpoint |
+| Service | Endpoint |
 | --- | --- |
 | Argo CD | `http://argocd.test` |
 | Open WebUI | `http://open-webui.test` |
@@ -430,16 +380,42 @@ With the Minikube ingress tunnel running, use these local entry points:
 | MinIO Console | `http://minio.test` |
 | Keycloak | `http://keycloak.test` |
 
-Vault, Prometheus, Trino, databases, and vLLM remain internal by default.
-Use a targeted port-forward for Vault administration during initialization:
+Vault, Prometheus, Trino, the databases, and vLLM stay cluster-internal by
+default. For Vault administration, use a targeted port-forward:
 
 ```bash
 kubectl -n "$NS" port-forward svc/vault-ui 8200:8200
 ```
 
-The bootstrap script generates browser-service credentials in Vault rather
-than printing them. With `VAULT_ADDR` and an authorized `VAULT_TOKEN` set,
-retrieve initial logins as needed:
+### Via port-forward
+
+Run the port-forward script on the host running Minikube. For host-local access
+on `127.0.0.1`:
+
+```bash
+./scripts/port-forward-services.sh
+```
+
+For LAN access from other machines on a trusted network (listens on all
+interfaces and prints the detected LAN IP):
+
+```bash
+./scripts/port-forward-services.sh --mode lan
+```
+
+If LAN IP autodetection picks the wrong interface, pass it explicitly:
+
+```bash
+./scripts/port-forward-services.sh restart --mode lan --address 192.168.1.54
+```
+
+Services are then reachable at endpoints like `http://192.168.1.54:8080`. Stop
+the forwards with `./scripts/port-forward-services.sh stop`.
+
+### Retrieving credentials
+
+The bootstrap script stores browser-service logins in Vault rather than printing
+them. With `VAULT_ADDR` and an authorized `VAULT_TOKEN` set:
 
 ```bash
 vault kv get -field=admin-password mini-platform/grafana-admin
@@ -449,28 +425,39 @@ vault kv get -field=admin-password mini-platform/keycloak-admin
 vault kv get -field=rootPassword mini-platform/minio-root-credentials
 ```
 
-LiteLLM uses
-`http://vllm-router-service.mini-platform.svc.cluster.local/v1`. Superset
-imports the starter Trino `tpch` catalog connection
-`trino://superset@trino.mini-platform.svc.cluster.local:8080/tpch`.
+## Verifying the Stack
 
-This starter configuration leaves Trino unauthenticated on an internal
-`ClusterIP` service. Configure TLS and authentication before exposing it.
-
-Test the LLM gateway after retrieving its Vault-managed Kubernetes Secret:
+**Langfuse + LiteLLM tracing.** Langfuse creates the `mini-platform` org and
+`litellm` project from the Vault-managed keys written in step 4; VSO exposes the
+same keys to LiteLLM. Confirm the secret synced and both apps are healthy:
 
 ```bash
-export LITELLM_MASTER_KEY="$(kubectl -n "$NS" get secret litellm-master-key -o jsonpath='{.data.PROXY_MASTER_KEY}' | base64 -d)"
+kubectl -n "$NS" get vaultstaticsecret litellm-langfuse
+kubectl -n "$NS" get pods -l app.kubernetes.io/instance=langfuse
+kubectl -n "$NS" get pods -l app.kubernetes.io/name=litellm
+```
+
+**LLM gateway smoke test.** LiteLLM serves the `local-opt125m` model backed by
+`http://vllm-router-service.mini-platform.svc.cluster.local/v1`:
+
+```bash
+export LITELLM_MASTER_KEY="$(kubectl -n "$NS" get secret litellm-master-key \
+  -o jsonpath='{.data.PROXY_MASTER_KEY}' | base64 -d)"
 curl http://litellm.test/v1/chat/completions \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{"model":"local-opt125m","messages":[{"role":"user","content":"Say hello in one sentence."}]}'
 ```
 
-Submit `SparkApplication` resources into `mini-platform` using
+**Analytics.** Superset imports the starter Trino `tpch` catalog at
+`trino://superset@trino.mini-platform.svc.cluster.local:8080/tpch`. Trino is
+unauthenticated on an internal `ClusterIP` service in this starter config —
+configure TLS and authentication before exposing it.
+
+**Spark.** Submit `SparkApplication` resources into `mini-platform` with
 `serviceAccount: spark-operator-spark`.
 
-### Operational Checks
+**General health:**
 
 ```bash
 kubectl -n argocd get applications
@@ -478,3 +465,24 @@ kubectl -n "$NS" get vaultstaticsecrets
 kubectl -n "$NS" get pods
 kubectl -n "$NS" get svc
 ```
+
+## Validating Changes
+
+Before committing a change to the GitOps wiring, run the same checks CI runs
+(`.github/workflows/validate.yaml`):
+
+```bash
+./scripts/validate-gitops.sh
+```
+
+It confirms every `chartPath`/`valuesFile` referenced by the app-of-apps exists,
+lints and renders the three `gitops/` charts, runs `kubeconform` over the
+rendered manifests, and `shellcheck`s the scripts. `kubeconform` and
+`shellcheck` are used if installed and skipped otherwise; CI installs both.
+
+## Production Hardening
+
+This repository is a local reference stack. Before any non-development use, at
+minimum: enable in-cluster TLS, replace Vault manual unseal with an auto-unseal
+mechanism and HA storage, scope administrative tokens tightly, add backups, and
+put authentication in front of Argo CD, Trino, and the other exposed services.

@@ -19,8 +19,6 @@ logs/
 
 # Local overrides
 *-local.yaml
-/mini-values/aws/*.log
-/mini-values/aws/temp.txt
 
 # Temporary files
 *.sql~
