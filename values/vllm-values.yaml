@@ -1,23 +1,44 @@
 servingEngineSpec:
   runtimeClassName: ""
   modelSpec:
-    - name: opt125m
+    - name: qwen
       repository: vllm/vllm-openai
       tag: latest
-      modelURL: facebook/opt-125m
-      chatTemplate: chat.jinja2
-      chatTemplateConfigMap: |-
-        {% for message in messages %}
-        {% if message['role'] == 'system' %}System: {{ message['content'] }}
-        {% elif message['role'] == 'user' %}User: {{ message['content'] }}
-        {% elif message['role'] == 'assistant' %}Assistant: {{ message['content'] }}
-        {% endif %}
-        {% endfor %}
-        {% if add_generation_prompt %}Assistant: {% endif %}
+      # NVFP4 (compressed-tensors) build of Qwen3.6-27B. vLLM's GGUF loader does
+      # not support the qwen3_5 arch, so we use this native-format 4-bit quant
+      # instead (auto-detected from the model's quantization_config).
+      modelURL: unsloth/Qwen3.6-27B-NVFP4
       replicaCount: 1
-      requestCPU: 1
-      requestMemory: 2Gi
+      requestCPU: 4
+      requestMemory: 32Gi
       requestGPU: 1
+      # Token provisioned via Vault (covers gated/private pulls + HF rate limits).
+      hf_token:
+        secretName: vllm-hf-token
+        secretKey: HF_TOKEN
+      # Persistent HF cache (mounted at /data, HF_HOME) so the ~14GB weights
+      # survive pod restarts instead of re-downloading each time.
+      pvcStorage: "40Gi"
+      vllmConfig:
+        dtype: "auto"
+        maxModelLen: 8192
+        # Leave headroom on the 32GB card (0.95 ran at ~31.2/32.6 GB).
+        gpuMemoryUtilization: 0.90
+        extraArgs:
+          # Stable served name for LiteLLM / router to target.
+          - "--served-model-name"
+          - "qwen3.6-27b"
+          # Skip CUDA-graph capture (memory + startup time).
+          - "--enforce-eager"
+  # Large model loads slowly; give the startup probe ~30 min
+  # (failureThreshold * periodSeconds) before giving up.
+  startupProbe:
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    failureThreshold: 180
+    httpGet:
+      path: /health
+      port: 8000
   serviceMonitor:
     enabled: false
 

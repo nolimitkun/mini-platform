@@ -3,6 +3,7 @@ set -euo pipefail
 
 : "${VAULT_ADDR:?Set VAULT_ADDR to the initialized Vault server address.}"
 : "${VAULT_TOKEN:?Set VAULT_TOKEN to a token allowed to write mini-platform/ secrets.}"
+: "${HF_TOKEN:?Set HF_TOKEN to a Hugging Face token for pulling the vLLM model weights and tokenizer.}"
 
 vault_cli() {
   if [[ -n "${VAULT_POD:-}" ]]; then
@@ -47,6 +48,9 @@ vault_cli kv put mini-platform/litellm-redis \
   REDIS_PORT=6379 \
   REDIS_PASSWORD="$REDIS_PASSWORD"
 vault_cli kv put mini-platform/litellm-master-key PROXY_MASTER_KEY="$LITELLM_MASTER_KEY"
+
+# Hugging Face token for pulling the vLLM model weights and tokenizer.
+vault_cli kv put mini-platform/vllm-hf-token HF_TOKEN="$HF_TOKEN"
 
 vault_cli kv put mini-platform/langfuse-app-secrets \
   salt="$(rand_b64)" \
