@@ -28,4 +28,8 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+{{- with $app.ignoreDifferences }}
+  ignoreDifferences:
+{{ toYaml . | nindent 4 }}
+{{- end }}
 {{- end }}

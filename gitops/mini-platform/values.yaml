@@ -40,6 +40,14 @@ applications:
     chartPath: charts/qdrant
     valuesFile: values/qdrant-values.yaml
     wave: "-3"
+    ignoreDifferences:
+      - group: apps
+        kind: StatefulSet
+        jsonPointers:
+          - /spec/persistentVolumeClaimRetentionPolicy
+          - /spec/volumeClaimTemplates/0/metadata/creationTimestamp
+          - /spec/volumeClaimTemplates/0/spec/volumeMode
+          - /spec/volumeClaimTemplates/0/status
   minio:
     chartPath: charts/minio
     valuesFile: values/minio-values.yaml
@@ -72,6 +80,14 @@ applications:
     chartPath: charts/prometheus
     valuesFile: values/prometheus-values.yaml
     wave: "-1"
+    ignoreDifferences:
+      - group: apps
+        kind: StatefulSet
+        jsonPointers:
+          - /spec/persistentVolumeClaimRetentionPolicy
+          - /spec/volumeClaimTemplates/0/metadata/creationTimestamp
+          - /spec/volumeClaimTemplates/0/spec/volumeMode
+          - /spec/volumeClaimTemplates/0/status
   grafana:
     chartPath: charts/grafana
     valuesFile: values/grafana-values.yaml
@@ -84,6 +100,14 @@ applications:
     chartPath: charts/superset
     valuesFile: values/superset-values.yaml
     wave: "0"
+    ignoreDifferences:
+      - group: apps
+        kind: StatefulSet
+        jsonPointers:
+          - /spec/persistentVolumeClaimRetentionPolicy
+          - /spec/volumeClaimTemplates/0/metadata/creationTimestamp
+          - /spec/volumeClaimTemplates/0/spec/volumeMode
+          - /spec/volumeClaimTemplates/0/status
   litellm:
     chartPath: charts/litellm-helm
     valuesFile: values/litellm-values.yaml
