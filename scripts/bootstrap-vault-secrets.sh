@@ -66,6 +66,12 @@ vault_cli kv put mini-platform/litellm-langfuse \
   LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
   LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
   LANGFUSE_HOST=http://langfuse-web.mini-platform.svc.cluster.local:3000
+# Langfuse headless init user: makes the auto-provisioned org/project visible in
+# the UI (org/project alone are API-only; a fresh signup joins no org).
+vault_cli kv put mini-platform/langfuse-init-user \
+  LANGFUSE_INIT_USER_EMAIL=admin@mini-platform.test \
+  LANGFUSE_INIT_USER_NAME=Admin \
+  LANGFUSE_INIT_USER_PASSWORD="$(rand_b64)"
 
 vault_cli kv put mini-platform/mlflow-auth \
   admin-user=admin \
