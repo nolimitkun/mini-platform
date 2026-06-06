@@ -45,9 +45,7 @@ applications:
         kind: StatefulSet
         jsonPointers:
           - /spec/persistentVolumeClaimRetentionPolicy
-          - /spec/volumeClaimTemplates/0/metadata/creationTimestamp
-          - /spec/volumeClaimTemplates/0/spec/volumeMode
-          - /spec/volumeClaimTemplates/0/status
+          - /spec/volumeClaimTemplates
   minio:
     chartPath: charts/minio
     valuesFile: values/minio-values.yaml
@@ -85,9 +83,7 @@ applications:
         kind: StatefulSet
         jsonPointers:
           - /spec/persistentVolumeClaimRetentionPolicy
-          - /spec/volumeClaimTemplates/0/metadata/creationTimestamp
-          - /spec/volumeClaimTemplates/0/spec/volumeMode
-          - /spec/volumeClaimTemplates/0/status
+          - /spec/volumeClaimTemplates
   grafana:
     chartPath: charts/grafana
     valuesFile: values/grafana-values.yaml
@@ -105,9 +101,7 @@ applications:
         kind: StatefulSet
         jsonPointers:
           - /spec/persistentVolumeClaimRetentionPolicy
-          - /spec/volumeClaimTemplates/0/metadata/creationTimestamp
-          - /spec/volumeClaimTemplates/0/spec/volumeMode
-          - /spec/volumeClaimTemplates/0/status
+          - /spec/volumeClaimTemplates
   litellm:
     chartPath: charts/litellm-helm
     valuesFile: values/litellm-values.yaml
