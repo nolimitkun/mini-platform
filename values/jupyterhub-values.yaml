@@ -10,6 +10,8 @@ proxy:
   traefik:
     networkPolicy:
       enabled: true
+  service:
+    type: ClusterIP
 
 singleuser:
   networkPolicy:
