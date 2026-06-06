@@ -3,7 +3,12 @@ set -euo pipefail
 
 : "${VAULT_ADDR:?Set VAULT_ADDR to the initialized Vault server address.}"
 : "${VAULT_TOKEN:?Set VAULT_TOKEN to a token allowed to write mini-platform/ secrets.}"
-: "${HF_TOKEN:?Set HF_TOKEN to a Hugging Face token for pulling the vLLM model weights and tokenizer.}"
+HF_TOKEN="${HF_TOKEN:-}"
+
+# When true, only secret paths that do not already exist are written. This lets
+# upgrades seed newly introduced secrets without rotating credentials that
+# running workloads already depend on.
+SEED_MISSING_ONLY="${SEED_MISSING_ONLY:-false}"
 
 vault_cli() {
   if [[ -n "${VAULT_POD:-}" ]]; then
@@ -15,6 +20,17 @@ vault_cli() {
   else
     command vault "$@"
   fi
+}
+
+# kv_put writes a secret, but skips it in SEED_MISSING_ONLY mode if the path
+# already exists so existing credentials are left untouched.
+kv_put() {
+  local path="$1"; shift
+  if [[ "$SEED_MISSING_ONLY" == true ]] && vault_cli kv get "$path" >/dev/null 2>&1; then
+    printf 'keeping existing %s\n' "$path"
+    return 0
+  fi
+  vault_cli kv put "$path" "$@"
 }
 
 rand_b64() {
@@ -35,57 +51,68 @@ SUPERSET_DB_PASSWORD="${SUPERSET_DB_PASSWORD:-$(rand_hex)}"
 SUPERSET_REDIS_PASSWORD="${SUPERSET_REDIS_PASSWORD:-$(rand_hex)}"
 SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD:-$(rand_b64)}"
 
-vault_cli kv put mini-platform/postgresql-credentials \
+kv_put mini-platform/postgresql-credentials \
   postgres-password="$POSTGRES_ADMIN_PASSWORD" \
   password="$LITELLM_DB_PASSWORD" \
   metrics-password="$(rand_b64)"
-vault_cli kv put mini-platform/litellm-dbcredentials \
+kv_put mini-platform/litellm-dbcredentials \
   username=litellm \
   password="$LITELLM_DB_PASSWORD"
-vault_cli kv put mini-platform/redis-credentials redis-password="$REDIS_PASSWORD"
-vault_cli kv put mini-platform/litellm-redis \
+kv_put mini-platform/redis-credentials redis-password="$REDIS_PASSWORD"
+kv_put mini-platform/litellm-redis \
   REDIS_HOST=redis-master.mini-platform.svc.cluster.local \
   REDIS_PORT=6379 \
   REDIS_PASSWORD="$REDIS_PASSWORD"
-vault_cli kv put mini-platform/litellm-master-key PROXY_MASTER_KEY="$LITELLM_MASTER_KEY"
+kv_put mini-platform/litellm-master-key PROXY_MASTER_KEY="$LITELLM_MASTER_KEY"
 
-# Hugging Face token for pulling the vLLM model weights and tokenizer.
-vault_cli kv put mini-platform/vllm-hf-token HF_TOKEN="$HF_TOKEN"
+# Hugging Face token for pulling the vLLM model weights and tokenizer. Require it
+# only when this secret is actually written (fresh install or rotation), not on a
+# seed-missing pass where it already exists.
+if [[ "$SEED_MISSING_ONLY" != true ]] || ! vault_cli kv get mini-platform/vllm-hf-token >/dev/null 2>&1; then
+  : "${HF_TOKEN:?Set HF_TOKEN to a Hugging Face token for pulling the vLLM model weights and tokenizer.}"
+fi
+kv_put mini-platform/vllm-hf-token HF_TOKEN="$HF_TOKEN"
 
-vault_cli kv put mini-platform/langfuse-app-secrets \
+kv_put mini-platform/langfuse-app-secrets \
   salt="$(rand_b64)" \
   encryption-key="$(rand_hex)" \
   nextauth-secret="$(rand_b64)"
-vault_cli kv put mini-platform/langfuse-postgresql password="$(rand_hex)"
-vault_cli kv put mini-platform/langfuse-redis password="$(rand_hex)"
-vault_cli kv put mini-platform/langfuse-clickhouse password="$(rand_hex)"
-vault_cli kv put mini-platform/langfuse-s3 \
+kv_put mini-platform/langfuse-postgresql password="$(rand_hex)"
+kv_put mini-platform/langfuse-redis password="$(rand_hex)"
+kv_put mini-platform/langfuse-clickhouse password="$(rand_hex)"
+kv_put mini-platform/langfuse-s3 \
   root-user=langfuse \
   root-password="$(rand_b64)"
-vault_cli kv put mini-platform/litellm-langfuse \
+kv_put mini-platform/litellm-langfuse \
   LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
   LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
   LANGFUSE_HOST=http://langfuse-web.mini-platform.svc.cluster.local:3000
+# Langfuse headless init user: makes the auto-provisioned org/project visible in
+# the UI (org/project alone are API-only; a fresh signup joins no org).
+kv_put mini-platform/langfuse-init-user \
+  LANGFUSE_INIT_USER_EMAIL=admin@mini-platform.test \
+  LANGFUSE_INIT_USER_NAME=Admin \
+  LANGFUSE_INIT_USER_PASSWORD="$(rand_b64)"
 
-vault_cli kv put mini-platform/mlflow-auth \
+kv_put mini-platform/mlflow-auth \
   admin-user=admin \
   admin-password="$(rand_b64)" \
   flask-server-secret-key="$(rand_hex)"
-vault_cli kv put mini-platform/mlflow-postgresql \
+kv_put mini-platform/mlflow-postgresql \
   postgres-password="$(rand_b64)" \
   password="$(rand_b64)"
-vault_cli kv put mini-platform/mlflow-minio \
+kv_put mini-platform/mlflow-minio \
   root-user=mlflow \
   root-password="$(rand_b64)"
-vault_cli kv put mini-platform/grafana-admin \
+kv_put mini-platform/grafana-admin \
   admin-user=admin \
   admin-password="$(rand_b64)"
 
-vault_cli kv put mini-platform/superset-postgresql \
+kv_put mini-platform/superset-postgresql \
   postgres-password="$(rand_b64)" \
   password="$SUPERSET_DB_PASSWORD"
-vault_cli kv put mini-platform/superset-redis redis-password="$SUPERSET_REDIS_PASSWORD"
-vault_cli kv put mini-platform/superset-env \
+kv_put mini-platform/superset-redis redis-password="$SUPERSET_REDIS_PASSWORD"
+kv_put mini-platform/superset-env \
   DB_HOST=superset-postgresql \
   DB_PORT=5432 \
   DB_USER=superset \
@@ -100,11 +127,11 @@ vault_cli kv put mini-platform/superset-env \
   SUPERSET_SECRET_KEY="$(openssl rand -base64 42 | tr -d '\n')" \
   SUPERSET_ADMIN_PASSWORD="$SUPERSET_ADMIN_PASSWORD"
 
-vault_cli kv put mini-platform/keycloak-admin admin-password="$(rand_b64)"
-vault_cli kv put mini-platform/keycloak-postgresql \
+kv_put mini-platform/keycloak-admin admin-password="$(rand_b64)"
+kv_put mini-platform/keycloak-postgresql \
   postgres-password="$(rand_b64)" \
   password="$(rand_b64)"
-vault_cli kv put mini-platform/minio-root-credentials \
+kv_put mini-platform/minio-root-credentials \
   rootUser=mini-platform \
   rootPassword="$(rand_b64)"
 

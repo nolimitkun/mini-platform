@@ -14,6 +14,7 @@ vaultSecrets:
     - langfuse-clickhouse
     - langfuse-s3
     - litellm-langfuse
+    - langfuse-init-user
     - vllm-hf-token
     - mlflow-auth
     - mlflow-postgresql

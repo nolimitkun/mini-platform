@@ -35,6 +35,23 @@ langfuse:
         secretKeyRef:
           name: litellm-langfuse
           key: LANGFUSE_SECRET_KEY
+    # Without an init user, the org/project are created for API access but no
+    # UI account is a member of the org, so the dashboard appears empty.
+    - name: LANGFUSE_INIT_USER_EMAIL
+      valueFrom:
+        secretKeyRef:
+          name: langfuse-init-user
+          key: LANGFUSE_INIT_USER_EMAIL
+    - name: LANGFUSE_INIT_USER_NAME
+      valueFrom:
+        secretKeyRef:
+          name: langfuse-init-user
+          key: LANGFUSE_INIT_USER_NAME
+    - name: LANGFUSE_INIT_USER_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: langfuse-init-user
+          key: LANGFUSE_INIT_USER_PASSWORD
   web:
     service:
       type: ClusterIP

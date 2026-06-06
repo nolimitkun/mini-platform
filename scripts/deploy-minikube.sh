@@ -513,7 +513,13 @@ if [[ "$initialized_now" == true || "$ROTATE_SECRETS" == true ]]; then
   VAULT_NAMESPACE="$NS" \
     "$ROOT/scripts/bootstrap-vault-secrets.sh"
 else
-  log "Keeping existing application credentials; use --rotate-secrets to replace them"
+  log "Keeping existing application credentials; seeding only newly added secrets (use --rotate-secrets to replace them)"
+  VAULT_ADDR=http://127.0.0.1:8200 \
+  VAULT_TOKEN="$VAULT_TOKEN" \
+  VAULT_POD=vault-0 \
+  VAULT_NAMESPACE="$NS" \
+  SEED_MISSING_ONLY=true \
+    "$ROOT/scripts/bootstrap-vault-secrets.sh"
 fi
 
 preload_cached_pod_images
