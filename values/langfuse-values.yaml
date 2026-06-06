@@ -62,7 +62,16 @@ redis:
 clickhouse:
   deploy: true
   replicaCount: 1
-  resourcesPreset: small
+  resourcesPreset: none
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+      ephemeral-storage: 50Mi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+      ephemeral-storage: 4Gi
   auth:
     existingSecret: langfuse-clickhouse
     existingSecretKey: password
