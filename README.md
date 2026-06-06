@@ -26,7 +26,7 @@ Open WebUI ──▶ LiteLLM ──▶ vLLM Router ──▶ vLLM
 ```
 
 Open WebUI talks to LiteLLM as an OpenAI-compatible gateway; LiteLLM routes the
-`local-opt125m` model to the vLLM router serving `facebook/opt-125m`, and emits
+`qwen3.6-27b` model to the vLLM router serving `unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M`, and emits
 traces to Langfuse using project keys it shares with Langfuse through Vault.
 
 Supporting subsystems:
@@ -288,6 +288,10 @@ then seed credentials:
 ```bash
 export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN='<initial-root-token-from-init-output>'
+# Hugging Face token used by vLLM to pull the model weights and the base
+# tokenizer (Qwen/Qwen3.6-27B). Accept any gated-model licenses at
+# huggingface.co with this account first, or the vLLM pull will 401.
+export HF_TOKEN='hf_xxxxxxxxxxxxxxxxxxxx'
 
 vault secrets enable -path=mini-platform kv-v2
 vault auth enable kubernetes
@@ -315,7 +319,9 @@ vault audit enable file file_path=/vault/audit/audit.log
 ```
 
 `bootstrap-vault-secrets.sh` generates random credentials for every component
-and writes them under `mini-platform/`. Notably, it writes shared Langfuse
+and writes them under `mini-platform/`. It also writes the `HF_TOKEN` you export
+to `mini-platform/vllm-hf-token`, which vLLM uses to pull the model weights.
+Notably, it writes shared Langfuse
 project keys to `mini-platform/litellm-langfuse`: Langfuse's headless init
 provisions the starter organization and project from those keys, and LiteLLM
 consumes the same Vault-managed secret for tracing — no browser setup is needed
@@ -437,7 +443,7 @@ kubectl -n "$NS" get pods -l app.kubernetes.io/instance=langfuse
 kubectl -n "$NS" get pods -l app.kubernetes.io/name=litellm
 ```
 
-**LLM gateway smoke test.** LiteLLM serves the `local-opt125m` model backed by
+**LLM gateway smoke test.** LiteLLM serves the `qwen3.6-27b` model backed by
 `http://vllm-router-service.mini-platform.svc.cluster.local/v1`:
 
 ```bash
@@ -446,7 +452,7 @@ export LITELLM_MASTER_KEY="$(kubectl -n "$NS" get secret litellm-master-key \
 curl http://litellm.test/v1/chat/completions \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"local-opt125m","messages":[{"role":"user","content":"Say hello in one sentence."}]}'
+  -d '{"model":"qwen3.6-27b","messages":[{"role":"user","content":"Say hello in one sentence."}]}'
 ```
 
 **Analytics.** Superset imports the starter Trino `tpch` catalog at

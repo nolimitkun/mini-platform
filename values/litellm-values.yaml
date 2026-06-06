@@ -13,9 +13,9 @@ environmentSecrets:
 
 proxy_config:
   model_list:
-    - model_name: local-opt125m
+    - model_name: qwen3.6-27b
       litellm_params:
-        model: openai/facebook/opt-125m
+        model: openai/qwen3.6-27b
         api_base: http://vllm-router-service.mini-platform.svc.cluster.local/v1
         api_key: none
   general_settings:
