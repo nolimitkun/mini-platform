@@ -14,3 +14,7 @@ proxy:
 singleuser:
   networkPolicy:
     enabled: true
+
+scheduling:
+  userPlaceholder:
+    enabled: false
