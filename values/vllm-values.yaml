@@ -22,14 +22,23 @@ servingEngineSpec:
       vllmConfig:
         dtype: "auto"
         maxModelLen: 8192
-        # Leave headroom on the 32GB card (0.95 ran at ~31.2/32.6 GB).
-        gpuMemoryUtilization: 0.90
+        # 24GB of NVFP4 weights dominate the 32GB card; push utilization up so
+        # the KV cache gets every spare byte (0.95 measured ~31.2/32.6 GB).
+        gpuMemoryUtilization: 0.95
+        # Reuse shared system-prompt / multi-turn history prefixes — large TTFT
+        # win for the Open WebUI chat workload (was 0% hit rate when disabled).
+        enablePrefixCaching: true
         extraArgs:
           # Stable served name for LiteLLM / router to target.
           - "--served-model-name"
           - "qwen3.6-27b"
-          # Skip CUDA-graph capture (memory + startup time).
-          - "--enforce-eager"
+          # FP8 KV cache halves bytes/token, roughly doubling concurrent capacity
+          # (the engine reported only 1.93GB / 23k tokens of KV at fp16). The
+          # chart has no dedicated key, so pass it through directly.
+          - "--kv-cache-dtype"
+          - "fp8"
+          # CUDA graphs (eager left off) recover decode throughput on Blackwell;
+          # the FP8 KV cache above frees the memory their capture needs.
   # Large model loads slowly; give the startup probe ~30 min
   # (failureThreshold * periodSeconds) before giving up.
   startupProbe:
