@@ -1,5 +1,12 @@
 servingEngineSpec:
   runtimeClassName: ""
+  # The node has a single GPU. The chart's default rollout strategy
+  # (maxSurge=100%, maxUnavailable=0) tries to schedule the new pod before
+  # tearing down the old one, but the new pod can never get the GPU the old
+  # pod still holds — so any config change deadlocks as Pending forever.
+  # Recreate stops the old pod first, freeing the GPU for the replacement.
+  strategy:
+    type: Recreate
   modelSpec:
     - name: qwen
       repository: vllm/vllm-openai
