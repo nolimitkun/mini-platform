@@ -7,6 +7,7 @@ ARGO_NS="${ARGO_NS:-argocd}"
 REPO_URL="${REPO_URL:-https://github.com/nolimitkun/mini-platform.git}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 VAULT_INIT_FILE="${VAULT_INIT_FILE:-$HOME/.vault-mini-platform-init.json}"
+HF_TOKEN_FILE="${HF_TOKEN_FILE:-$HOME/.cache/huggingface/token}"
 SOURCE_MODE=remote
 GPU=true
 RESET=false
@@ -218,6 +219,57 @@ wait_for_workloads() {
   fail "platform workloads did not become ready within ${WORKLOAD_TIMEOUT}s"
 }
 
+ensure_litellm_schema() {
+  kubectl -n "$NS" get deployment litellm >/dev/null 2>&1 || return 0
+
+  log "Verifying LiteLLM database schema"
+  local pw exists pod deadline
+
+  pw="$(kubectl -n "$NS" get secret litellm-dbcredentials \
+    -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)"
+  if [[ -z "$pw" ]]; then
+    warn "litellm-dbcredentials unavailable; skipping LiteLLM schema check"
+    return 0
+  fi
+
+  exists="$(kubectl -n "$NS" exec postgresql-0 -c postgresql -- \
+    env PGPASSWORD="$pw" psql -U litellm -d litellm -tAc \
+    'select to_regclass('"'"'public."LiteLLM_UserTable"'"'"') is not null' \
+    2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ "$exists" == t ]]; then
+    log "LiteLLM schema already present"
+    return 0
+  fi
+
+  warn "LiteLLM schema missing; applying Prisma migration (PreSync hook did not)"
+  deadline=$((SECONDS + 300))
+  pod=""
+  while [[ "$SECONDS" -lt "$deadline" ]]; do
+    pod="$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=litellm \
+      --field-selector=status.phase=Running \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    if [[ -n "$pod" ]] && kubectl -n "$NS" exec "$pod" -- true >/dev/null 2>&1; then
+      break
+    fi
+    pod=""
+    preload_cached_pod_images
+    sleep 10
+  done
+  if [[ -z "$pod" ]]; then
+    warn "no running LiteLLM pod to migrate; rerun deploy once its image is pulled"
+    return 0
+  fi
+
+  if kubectl -n "$NS" exec "$pod" -- sh -c \
+      'DISABLE_SCHEMA_UPDATE=false python litellm/proxy/prisma_migration.py'; then
+    log "LiteLLM schema migration applied; restarting deployment"
+    kubectl -n "$NS" rollout restart deployment/litellm >/dev/null
+    kubectl -n "$NS" rollout status deployment/litellm --timeout=180s || true
+  else
+    warn "LiteLLM Prisma migration failed; inspect 'kubectl -n $NS logs deploy/litellm'"
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --reset)
@@ -266,6 +318,17 @@ done
   fail "WORKLOAD_TIMEOUT must be a positive integer"
 
 cd "$ROOT"
+
+# Auto-load a Hugging Face token from the user's cache when one is not already
+# provided. The Vault seed (bootstrap-vault-secrets.sh) requires HF_TOKEN to
+# store the vLLM model-pull credential; without it a fresh deploy aborts partway
+# through seeding, which leaves Argo CD half-synced (e.g. the LiteLLM PreSync
+# migration hook never runs to success). Set HF_TOKEN explicitly to override.
+if [[ -z "${HF_TOKEN:-}" && -s "$HF_TOKEN_FILE" ]]; then
+  HF_TOKEN="$(tr -d '\r\n' < "$HF_TOKEN_FILE")"
+  export HF_TOKEN
+  log "Loaded HF_TOKEN from $HF_TOKEN_FILE"
+fi
 
 if command -v loginctl >/dev/null 2>&1 &&
    docker info --format '{{ join .SecurityOptions "," }}' 2>/dev/null | grep -q rootless &&
@@ -548,6 +611,8 @@ restart_pending_workload_pods
 if [[ "$WAIT_FOR_WORKLOADS" == true ]]; then
   wait_for_workloads
 fi
+
+ensure_litellm_schema
 
 log "Deployment bootstrap finished"
 kubectl -n "$ARGO_NS" get applications

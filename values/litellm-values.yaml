@@ -47,3 +47,7 @@ redis:
 
 migrationJob:
   enabled: true
+  # Retry the PreSync schema migration long enough to outlast a database or
+  # credential dependency that is still coming up, instead of giving up after
+  # the chart default of 4 attempts and leaving an empty schema.
+  backoffLimit: 20

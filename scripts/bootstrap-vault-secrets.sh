@@ -34,7 +34,12 @@ kv_put() {
 }
 
 rand_b64() {
-  openssl rand -base64 32 | tr -d '\n'
+  # URL-safe, padding-free random token. Standard base64 padding ('=') and the
+  # '+'/'/' characters break consumers that parse credentials out of INI files,
+  # env interpolation, or URLs (e.g. MLflow's basic_auth.ini dropped a trailing
+  # '=', creating an admin password that no longer matched the stored secret).
+  # Mapping to the URL-safe alphabet and stripping padding keeps full entropy.
+  openssl rand -base64 32 | tr -d '\n' | tr '+/' '-_' | tr -d '='
 }
 
 rand_hex() {
