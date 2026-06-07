@@ -44,8 +44,12 @@ servingEngineSpec:
           # chart has no dedicated key, so pass it through directly.
           - "--kv-cache-dtype"
           - "fp8"
-          # CUDA graphs (eager left off) recover decode throughput on Blackwell;
-          # the FP8 KV cache above frees the memory their capture needs.
+          # Keep eager mode. With 24GB of weights on a 32GB card there is no room
+          # for CUDA-graph capture: dropping this flag OOMs during
+          # profile_cudagraph_memory (FULL_AND_PIECEWISE tried to allocate
+          # ~1.5GB with <1GB free). The decode-throughput gain from graphs is
+          # not reachable at this model/card ratio.
+          - "--enforce-eager"
   # Large model loads slowly; give the startup probe ~30 min
   # (failureThreshold * periodSeconds) before giving up.
   startupProbe:
