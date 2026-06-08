@@ -12,6 +12,13 @@ initChownData:
 datasources:
   datasources.yaml:
     apiVersion: 1
+    # Remove any pre-existing (auto-uid) Prometheus datasource first so the
+    # fixed uid below can be (re)applied cleanly. Without this, changing the
+    # uid of an already-persisted datasource crashes Grafana provisioning with
+    # "data source not found" (persistence.enabled keeps the old row around).
+    deleteDatasources:
+      - name: Prometheus
+        orgId: 1
     datasources:
       - name: Prometheus
         type: prometheus
