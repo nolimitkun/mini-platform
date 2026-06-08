@@ -28,6 +28,19 @@ For local validation, the deployment repo's `scripts/validate-gitops.sh` can
 point its `CHARTS_DIR` at a checkout of this repo to confirm every referenced
 `chartPath` resolves.
 
+## Inventory and maintenance
+
+[`charts-index.yaml`](charts-index.yaml) records the vendored chart paths,
+versions, platform category, and upstream provenance for quick review. Keep it
+in sync whenever a chart subtree is replaced.
+
+Use [`docs/CHART_UPDATES.md`](docs/CHART_UPDATES.md) for the update process.
+The lightweight local check is:
+
+```sh
+scripts/check-chart-inventory.sh
+```
+
 ## Conventions
 
 - Charts are **third-party and vendored** — not linted or modified here. The
