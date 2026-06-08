@@ -15,6 +15,7 @@ datasources:
     datasources:
       - name: Prometheus
         type: prometheus
+        uid: prometheus
         access: proxy
         url: http://prometheus-server
         isDefault: true
@@ -38,3 +39,7 @@ dashboards:
       file: dashboards/platform-services-overview.json
     platform-service-detail:
       file: dashboards/platform-service-detail.json
+    vllm-dashboard:
+      file: dashboards/vllm-dashboard.json
+    lmcache-dashboard:
+      file: dashboards/lmcache-dashboard.json
