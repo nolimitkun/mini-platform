@@ -1,0 +1,21 @@
+name: Chart Library Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - split-charts-and-deployment
+
+jobs:
+  inventory:
+    name: Check chart inventory
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate chart inventory
+        run: scripts/check-chart-inventory.sh

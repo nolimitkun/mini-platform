@@ -1,0 +1,183 @@
+apiVersion: mini-platform.dev/v1alpha1
+kind: ChartInventory
+metadata:
+  name: mini-platform-charts
+  description: Vendored Helm charts used by the Mini Platform deployment repo.
+spec:
+  generatedFrom: charts/*/Chart.yaml
+  policy:
+    vendored: true
+    customizeIn: mini-platform-deployment
+    updateMode: replace-chart-subtree
+  charts:
+    - path: charts/argo-cd
+      name: argo-cd
+      chartVersion: 9.5.15
+      appVersion: v3.4.2
+      category: gitops
+      upstream:
+        home: https://github.com/argoproj/argo-helm
+        chartRepository: https://argoproj.github.io/argo-helm
+        source: https://github.com/argoproj/argo-helm
+    - path: charts/grafana
+      name: grafana
+      chartVersion: 12.4.0
+      appVersion: 13.0.1-security-01
+      category: observability
+      upstream:
+        home: https://grafana.com
+        chartRepository: https://grafana.github.io/helm-charts
+        source: https://github.com/grafana/helm-charts
+    - path: charts/jupyterhub
+      name: jupyterhub
+      chartVersion: 4.3.5
+      appVersion: 5.4.6
+      category: notebooks
+      upstream:
+        home: https://z2jh.jupyter.org
+        chartRepository: https://hub.jupyter.org/helm-chart/
+        source: https://github.com/jupyterhub/zero-to-jupyterhub-k8s
+    - path: charts/keycloak
+      name: keycloak
+      chartVersion: 25.2.0
+      appVersion: 26.3.3
+      category: identity
+      upstream:
+        home: https://bitnami.com
+        chartRepository: https://charts.bitnami.com/bitnami
+        source: https://github.com/bitnami/charts
+    - path: charts/langfuse
+      name: langfuse
+      chartVersion: 1.5.31
+      appVersion: 3.174.1
+      category: llm-observability
+      upstream:
+        home: https://langfuse.com/
+        chartRepository: https://langfuse.github.io/langfuse-k8s
+        source: https://github.com/langfuse/langfuse-k8s
+    - path: charts/litellm-helm
+      name: litellm-helm
+      chartVersion: 1.85.1
+      appVersion: 1.85.1
+      category: llm-gateway
+      upstream:
+        home: https://docs.litellm.ai/
+        chartRepository: oci://ghcr.io/berriai/litellm
+        source: https://github.com/BerriAI/litellm
+    - path: charts/minio
+      name: minio
+      chartVersion: 5.4.0
+      appVersion: RELEASE.2024-12-18T13-15-44Z
+      category: object-storage
+      upstream:
+        home: https://min.io
+        chartRepository: https://charts.min.io/
+        source: https://github.com/minio/minio
+    - path: charts/mlflow
+      name: mlflow
+      chartVersion: 5.1.17
+      appVersion: 3.3.2
+      category: experiment-tracking
+      upstream:
+        home: https://bitnami.com
+        chartRepository: https://charts.bitnami.com/bitnami
+        source: https://github.com/bitnami/charts
+    - path: charts/open-webui
+      name: open-webui
+      chartVersion: 14.6.0
+      appVersion: 0.9.5
+      category: llm-ui
+      upstream:
+        home: https://www.openwebui.com/
+        chartRepository: https://helm.openwebui.com/
+        source: https://github.com/open-webui/helm-charts
+    - path: charts/postgresql
+      name: postgresql
+      chartVersion: 18.6.7
+      appVersion: 18.4.0
+      category: database
+      upstream:
+        home: https://bitnami.com
+        chartRepository: https://charts.bitnami.com/bitnami
+        source: https://github.com/bitnami/charts
+    - path: charts/prometheus
+      name: prometheus
+      chartVersion: 29.8.0
+      appVersion: v3.11.3
+      category: observability
+      upstream:
+        home: https://prometheus.io/
+        chartRepository: https://prometheus-community.github.io/helm-charts
+        source: https://github.com/prometheus-community/helm-charts
+    - path: charts/qdrant
+      name: qdrant
+      chartVersion: 1.18.0
+      appVersion: v1.18.0
+      category: vector-database
+      upstream:
+        home: https://qdrant.tech
+        chartRepository: https://qdrant.github.io/qdrant-helm
+        source: https://github.com/qdrant/qdrant-helm
+    - path: charts/redis
+      name: redis
+      chartVersion: 25.5.3
+      appVersion: 8.6.3
+      category: cache
+      upstream:
+        home: https://bitnami.com
+        chartRepository: https://charts.bitnami.com/bitnami
+        source: https://github.com/bitnami/charts
+    - path: charts/spark-operator
+      name: spark-operator
+      chartVersion: 2.5.0
+      appVersion: 2.5.0
+      category: data-processing
+      upstream:
+        home: https://github.com/kubeflow/spark-operator
+        chartRepository: oci://ghcr.io/kubeflow/spark-operator
+        source: https://github.com/kubeflow/spark-operator
+    - path: charts/superset
+      name: superset
+      chartVersion: 0.15.5
+      appVersion: 5.0.0
+      category: business-intelligence
+      upstream:
+        home: https://superset.apache.org/
+        chartRepository: https://apache.github.io/superset
+        source: https://github.com/apache/superset
+    - path: charts/trino
+      name: trino
+      chartVersion: 1.42.2
+      appVersion: "480"
+      category: sql-analytics
+      upstream:
+        home: https://trino.io/
+        chartRepository: https://trinodb.github.io/charts
+        source: https://github.com/trinodb/charts
+    - path: charts/vault
+      name: vault
+      chartVersion: 0.32.0
+      appVersion: 1.21.2
+      category: secrets
+      upstream:
+        home: https://www.vaultproject.io
+        chartRepository: https://helm.releases.hashicorp.com
+        source: https://github.com/hashicorp/vault-helm
+    - path: charts/vault-secrets-operator
+      name: vault-secrets-operator
+      chartVersion: 1.4.0
+      appVersion: 1.4.0
+      category: secrets
+      upstream:
+        home: https://developer.hashicorp.com/vault/docs/platform/k8s/vso
+        chartRepository: https://helm.releases.hashicorp.com
+        source: https://github.com/hashicorp/vault-secrets-operator
+    - path: charts/vllm-stack
+      name: vllm-stack
+      chartVersion: 0.1.11
+      appVersion: null
+      category: llm-inference
+      upstream:
+        home: https://docs.vllm.ai/
+        chartRepository: https://vllm-project.github.io/production-stack
+        source: https://github.com/vllm-project/production-stack

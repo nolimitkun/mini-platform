@@ -1,0 +1,14 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Mini Platform chart update dashboard",
+  "enabledManagers": ["github-actions", "helmv3"],
+  "prCreation": "approval",
+  "packageRules": [
+    {
+      "description": "Vendored chart changes must be reviewed and replaced as full upstream subtrees.",
+      "matchManagers": ["helmv3"],
+      "enabled": false
+    }
+  ]
+}
