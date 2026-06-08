@@ -26,18 +26,45 @@ for chart_yaml in charts/*/Chart.yaml; do
     status=1
   fi
 
-  if ! grep -q "path: $chart_dir$" "$inventory"; then
-    echo "$inventory is missing $chart_dir" >&2
-    status=1
-  fi
-
-  if ! grep -q "name: $name$" "$inventory"; then
-    echo "$inventory is missing chart name $name for $chart_dir" >&2
-    status=1
-  fi
-
-  if ! grep -q "chartVersion: $version$" "$inventory"; then
-    echo "$inventory has no chartVersion $version for $chart_dir" >&2
+  if ! awk \
+    -v inventory="$inventory" \
+    -v path="$chart_dir" \
+    -v name="$name" \
+    -v version="$version" '
+      BEGIN {
+        path_line = "    - path: " path
+        name_line = "      name: " name
+        version_line = "      chartVersion: " version
+      }
+      $0 == path_line {
+        in_block = 1
+        found_path = 1
+        next
+      }
+      in_block && /^    - path: charts\// {
+        in_block = 0
+      }
+      in_block && $0 == name_line {
+        found_name = 1
+      }
+      in_block && $0 == version_line {
+        found_version = 1
+      }
+      END {
+        if (!found_path) {
+          print inventory " is missing " path > "/dev/stderr"
+          exit 1
+        }
+        if (!found_name) {
+          print inventory " has no name " name " in block for " path > "/dev/stderr"
+          exit 1
+        }
+        if (!found_version) {
+          print inventory " has no chartVersion " version " in block for " path > "/dev/stderr"
+          exit 1
+        }
+      }
+    ' "$inventory"; then
     status=1
   fi
 done
