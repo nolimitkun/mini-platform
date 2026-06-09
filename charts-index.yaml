@@ -64,6 +64,15 @@ spec:
         home: https://docs.litellm.ai/
         chartRepository: oci://ghcr.io/berriai/litellm
         source: https://github.com/BerriAI/litellm
+    - path: charts/llm-d-scheduler
+      name: standalone
+      chartVersion: v1.5.0
+      appVersion: v1.5.0
+      category: llm-inference
+      upstream:
+        home: https://llm-d.ai/
+        chartRepository: oci://registry.k8s.io/gateway-api-inference-extension/charts
+        source: https://github.com/kubernetes-sigs/gateway-api-inference-extension
     - path: charts/minio
       name: minio
       chartVersion: 5.4.0
