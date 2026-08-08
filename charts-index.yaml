@@ -10,6 +10,15 @@ spec:
     customizeIn: mini-platform-deployment
     updateMode: replace-chart-subtree
   charts:
+    - path: charts/alloy
+      name: alloy
+      chartVersion: 1.11.1
+      appVersion: v1.18.1
+      category: observability
+      upstream:
+        home: https://grafana.com/oss/alloy/
+        chartRepository: https://grafana.github.io/helm-charts
+        source: https://github.com/grafana/alloy
     - path: charts/argo-cd
       name: argo-cd
       chartVersion: 9.5.15
@@ -73,6 +82,15 @@ spec:
         home: https://llm-d.ai/
         chartRepository: oci://registry.k8s.io/gateway-api-inference-extension/charts
         source: https://github.com/kubernetes-sigs/gateway-api-inference-extension
+    - path: charts/loki
+      name: loki
+      chartVersion: 7.2.0
+      appVersion: 3.6.11
+      category: observability
+      upstream:
+        home: https://grafana.com/oss/loki/
+        chartRepository: https://grafana.github.io/helm-charts
+        source: https://github.com/grafana/loki
     - path: charts/minio
       name: minio
       chartVersion: 5.4.0
@@ -154,6 +172,15 @@ spec:
         home: https://superset.apache.org/
         chartRepository: https://apache.github.io/superset
         source: https://github.com/apache/superset
+    - path: charts/tempo
+      name: tempo
+      chartVersion: 1.24.4
+      appVersion: 2.9.0
+      category: observability
+      upstream:
+        home: https://grafana.com/oss/tempo/
+        chartRepository: https://grafana.github.io/helm-charts
+        source: https://github.com/grafana/tempo
     - path: charts/trino
       name: trino
       chartVersion: 1.42.2
