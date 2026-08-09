@@ -127,6 +127,15 @@ spec:
         home: https://bitnami.com
         chartRepository: https://charts.bitnami.com/bitnami
         source: https://github.com/bitnami/charts
+    - path: charts/oauth2-proxy
+      name: oauth2-proxy
+      chartVersion: 10.7.0
+      appVersion: 7.15.3
+      category: identity
+      upstream:
+        home: https://oauth2-proxy.github.io/oauth2-proxy/
+        chartRepository: https://oauth2-proxy.github.io/manifests
+        source: https://github.com/oauth2-proxy/manifests
     - path: charts/open-webui
       name: open-webui
       chartVersion: 14.6.0
