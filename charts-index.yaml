@@ -37,6 +37,15 @@ spec:
         home: https://grafana.com
         chartRepository: https://grafana.github.io/helm-charts
         source: https://github.com/grafana/helm-charts
+    - path: charts/holmes
+      name: holmes
+      chartVersion: 0.38.2
+      appVersion: 0.38.2
+      category: agentic-ai
+      upstream:
+        home: https://holmesgpt.dev/
+        chartRepository: https://robusta-charts.storage.googleapis.com
+        source: https://github.com/HolmesGPT/holmesgpt
     - path: charts/jupyterhub
       name: jupyterhub
       chartVersion: 4.3.5
