@@ -30,13 +30,14 @@ scripts, or Vault wiring of its own.
   chart to a new version (replacing the subtree verbatim), not editing chart
   internals. If a behavioral change is needed, prefer a values override in the
   deployment repo over patching the chart.
-- **No CI gate / no validator lives here.** Rendering and schema checks run in
-  the deployment repo (`scripts/validate-gitops.sh`), which can point its
+- **No rendering gate lives here.** Rendering and schema checks run in the
+  deployment repo (`scripts/validate-gitops.sh`), which can point its
   `CHARTS_DIR` at a local checkout of this repo to verify chart paths resolve.
+  The only CI here is `.github/workflows/chart-library-checks.yml`, which runs
+  `scripts/check-chart-inventory.sh` to keep `charts-index.yaml` in step with
+  the subtrees on disk.
 - **No credentials, ever.** Same invariant as the deployment repo: Vault is the
   source of truth for secrets.
-- `.github/workflows/claude.yml` and `claude-code-review.yml` wire up the Claude
-  GitHub app.
 
 When adding a *new* component to the platform, the chart subtree is dropped here
 under `charts/`, but the overlay, app-of-apps entry, secrets, and ingress route
