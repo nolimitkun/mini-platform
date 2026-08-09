@@ -1,0 +1,6 @@
+apiVersion: v2
+appVersion: 0.38.2
+description: HolmesGPT Helm chart for Kubernetes
+name: holmes
+type: application
+version: 0.38.2
