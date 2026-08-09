@@ -46,6 +46,24 @@ spec:
         home: https://z2jh.jupyter.org
         chartRepository: https://hub.jupyter.org/helm-chart/
         source: https://github.com/jupyterhub/zero-to-jupyterhub-k8s
+    - path: charts/kagent
+      name: kagent
+      chartVersion: 0.9.12
+      appVersion: null
+      category: agentic-ai
+      upstream:
+        home: https://kagent.dev/
+        chartRepository: oci://ghcr.io/kagent-dev/kagent/helm
+        source: https://github.com/kagent-dev/kagent
+    - path: charts/kagent-crds
+      name: kagent-crds
+      chartVersion: 0.9.12
+      appVersion: null
+      category: agentic-ai
+      upstream:
+        home: https://kagent.dev/
+        chartRepository: oci://ghcr.io/kagent-dev/kagent/helm
+        source: https://github.com/kagent-dev/kagent
     - path: charts/keycloak
       name: keycloak
       chartVersion: 25.2.0
