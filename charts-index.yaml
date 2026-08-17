@@ -28,6 +28,15 @@ spec:
         home: https://github.com/argoproj/argo-helm
         chartRepository: https://argoproj.github.io/argo-helm
         source: https://github.com/argoproj/argo-helm
+    - path: charts/dcgm-exporter
+      name: dcgm-exporter
+      chartVersion: 4.8.3
+      appVersion: 4.8.3
+      category: observability
+      upstream:
+        home: https://github.com/nvidia/dcgm-exporter/
+        chartRepository: https://nvidia.github.io/dcgm-exporter/helm-charts
+        source: https://github.com/NVIDIA/dcgm-exporter
     - path: charts/grafana
       name: grafana
       chartVersion: 12.4.0
