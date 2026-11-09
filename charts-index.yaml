@@ -127,15 +127,6 @@ spec:
         home: https://langfuse.com/
         chartRepository: https://langfuse.github.io/langfuse-k8s
         source: https://github.com/langfuse/langfuse-k8s
-    - path: charts/litellm-helm
-      name: litellm-helm
-      chartVersion: 1.85.1
-      appVersion: 1.85.1
-      category: llm-gateway
-      upstream:
-        home: https://docs.litellm.ai/
-        chartRepository: oci://ghcr.io/berriai/litellm
-        source: https://github.com/BerriAI/litellm
     - path: charts/llm-d-scheduler
       name: standalone
       chartVersion: v1.5.0
