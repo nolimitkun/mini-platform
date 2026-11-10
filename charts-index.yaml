@@ -217,6 +217,15 @@ spec:
         home: https://bitnami.com
         chartRepository: https://charts.bitnami.com/bitnami
         source: https://github.com/bitnami/charts
+    - path: charts/semantic-router
+      name: semantic-router
+      chartVersion: 0.4.0
+      appVersion: v0.4.0
+      category: agentic-ai
+      upstream:
+        home: https://vllm-sr.ai/
+        chartRepository: oci://ghcr.io/vllm-project/charts
+        source: https://github.com/vllm-project/semantic-router
     - path: charts/spark-operator
       name: spark-operator
       chartVersion: 2.5.0

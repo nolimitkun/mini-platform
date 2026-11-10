@@ -1,0 +1,49 @@
+apiVersion: v2
+appVersion: v0.4.0
+dependencies:
+- alias: semantic-cache-redis
+  condition: dependencies.semanticCache.redis.enabled
+  name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: '>=0.0.0'
+- alias: semantic-cache-milvus
+  condition: dependencies.semanticCache.milvus.enabled
+  name: milvus
+  repository: https://milvus-io.github.io/milvus-helm/
+  version: '>=0.0.0'
+- alias: response-api-redis
+  condition: dependencies.responseApi.redis.enabled
+  name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: '>=0.0.0'
+- condition: dependencies.observability.jaeger.enabled
+  name: jaeger
+  repository: https://jaegertracing.github.io/helm-charts
+  version: '>=0.0.0'
+- condition: dependencies.observability.prometheus.enabled
+  name: prometheus
+  repository: https://prometheus-community.github.io/helm-charts
+  version: '>=0.0.0'
+- condition: dependencies.observability.grafana.enabled
+  name: grafana
+  repository: https://grafana.github.io/helm-charts
+  version: '>=0.0.0'
+description: A Helm chart for deploying Semantic Router - an intelligent routing system
+  for LLM applications
+home: https://github.com/vllm-project/semantic-router
+icon: https://raw.githubusercontent.com/vllm-project/semantic-router/main/website/static/img/logo.png
+keywords:
+- semantic-router
+- llm
+- vllm
+- ai
+- routing
+- classification
+maintainers:
+- name: Semantic Router Team
+  url: https://github.com/vllm-project/semantic-router
+name: semantic-router
+sources:
+- https://github.com/vllm-project/semantic-router
+type: application
+version: 0.4.0
