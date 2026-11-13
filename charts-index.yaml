@@ -55,6 +55,15 @@ spec:
         home: https://github.com/argoproj/argo-helm
         chartRepository: https://argoproj.github.io/argo-helm
         source: https://github.com/argoproj/argo-helm
+    - path: charts/cert-manager
+      name: cert-manager
+      chartVersion: v1.17.0
+      appVersion: v1.17.0
+      category: security
+      upstream:
+        home: https://cert-manager.io
+        chartRepository: https://charts.jetstack.io
+        source: https://github.com/cert-manager/cert-manager
     - path: charts/dcgm-exporter
       name: dcgm-exporter
       chartVersion: 4.8.3
@@ -118,6 +127,33 @@ spec:
         home: https://bitnami.com
         chartRepository: https://charts.bitnami.com/bitnami
         source: https://github.com/bitnami/charts
+    - path: charts/kserve-llmisvc-crd
+      name: kserve-llmisvc-crd
+      chartVersion: v0.21.0-rc1
+      appVersion: v0.21.0-rc1
+      category: llm-inference
+      upstream:
+        home: https://kserve.github.io/website/
+        chartRepository: git tag v0.21.0, charts/kserve-llmisvc-crd
+        source: https://github.com/kserve/kserve
+    - path: charts/kserve-llmisvc-resources
+      name: kserve-llmisvc-resources
+      chartVersion: v0.21.0-rc1
+      appVersion: v0.21.0-rc1
+      category: llm-inference
+      upstream:
+        home: https://kserve.github.io/website/
+        chartRepository: git tag v0.21.0, charts/kserve-llmisvc-resources
+        source: https://github.com/kserve/kserve
+    - path: charts/kserve-runtime-configs
+      name: kserve-runtime-configs
+      chartVersion: v0.21.0-rc1
+      appVersion: v0.21.0-rc1
+      category: llm-inference
+      upstream:
+        home: https://kserve.github.io/website/
+        chartRepository: git tag v0.21.0, charts/kserve-runtime-configs
+        source: https://github.com/kserve/kserve
     - path: charts/langfuse
       name: langfuse
       chartVersion: 1.5.31
@@ -127,15 +163,6 @@ spec:
         home: https://langfuse.com/
         chartRepository: https://langfuse.github.io/langfuse-k8s
         source: https://github.com/langfuse/langfuse-k8s
-    - path: charts/llm-d-scheduler
-      name: standalone
-      chartVersion: v1.5.0
-      appVersion: v1.5.0
-      category: llm-inference
-      upstream:
-        home: https://llm-d.ai/
-        chartRepository: oci://registry.k8s.io/gateway-api-inference-extension/charts
-        source: https://github.com/kubernetes-sigs/gateway-api-inference-extension
     - path: charts/loki
       name: loki
       chartVersion: 7.2.0
@@ -145,6 +172,15 @@ spec:
         home: https://grafana.com/oss/loki/
         chartRepository: https://grafana.github.io/helm-charts
         source: https://github.com/grafana/loki
+    - path: charts/lws
+      name: lws
+      chartVersion: v0.8.0
+      appVersion: v0.8.0
+      category: llm-inference
+      upstream:
+        home: https://lws.sigs.k8s.io/
+        chartRepository: oci://registry.k8s.io/lws/charts
+        source: https://github.com/kubernetes-sigs/lws
     - path: charts/minio
       name: minio
       chartVersion: 5.4.0
@@ -280,12 +316,3 @@ spec:
         home: https://developer.hashicorp.com/vault/docs/platform/k8s/vso
         chartRepository: https://helm.releases.hashicorp.com
         source: https://github.com/hashicorp/vault-secrets-operator
-    - path: charts/vllm-stack
-      name: vllm-stack
-      chartVersion: 0.1.11
-      appVersion: null
-      category: llm-inference
-      upstream:
-        home: https://docs.vllm.ai/
-        chartRepository: https://vllm-project.github.io/production-stack
-        source: https://github.com/vllm-project/production-stack
