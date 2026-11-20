@@ -181,6 +181,15 @@ spec:
         home: https://lws.sigs.k8s.io/
         chartRepository: oci://registry.k8s.io/lws/charts
         source: https://github.com/kubernetes-sigs/lws
+    - path: charts/metrics-server
+      name: metrics-server
+      chartVersion: 3.13.0
+      appVersion: 0.8.0
+      category: observability
+      upstream:
+        home: https://github.com/kubernetes-sigs/metrics-server
+        chartRepository: https://kubernetes-sigs.github.io/metrics-server/
+        source: https://github.com/kubernetes-sigs/metrics-server
     - path: charts/minio
       name: minio
       chartVersion: 5.4.0
